@@ -1,8 +1,9 @@
+```json
 {
   "name": "quik-maintenance-system",
   "private": true,
   "version": "1.0.0",
-  "description": "نظام إدارة الصيانة والتفتيش السحابي - محطات كويك للوقود (Cloud-Only Application)",
+  "description": "نظام إدارة الصيانة والتفتيش - محطات كويك للوقود",
   "author": "Quik Fuel Stations",
   "type": "module",
   "scripts": {
@@ -69,3 +70,4 @@
     "typescript": "^7.0.2"
   }
 }
+```
