@@ -6,28 +6,20 @@ import {
   Printer,
   Edit3,
   Trash2,
-  Clock,
-  CheckCircle2,
   X,
   Zap,
   Container,
   Building,
-  User,
   Wrench,
   FileSpreadsheet,
   CheckSquare,
   Square,
   AlertCircle,
-  AlertTriangle,
   Download,
-  Sparkles,
-  Lightbulb
 } from 'lucide-react';
 import { MaintenanceRequest, Station, MaintenanceStatus } from '../types';
 import { ConfirmModal } from './ConfirmModal';
 import { ModalPortal } from './ModalPortal';
-import { findSimilarMaintenanceRequests, MaintenanceInsight } from '../utils/smartAnalysis';
-import { classifyMaintenanceDescription, SmartClassificationSuggestion } from '../utils/smartClassifier';
 import { getNextMaintenanceRequestNumber, parseValidRequestNumber } from '../utils/requestSequencer';
 import { getDynamicYearOptions, matchMonthAndYear } from '../utils/dateFilters';
 import { MonthYearFilter } from './MonthYearFilter';
@@ -81,53 +73,6 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRequest, setEditingRequest] = useState<MaintenanceRequest | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [duplicateWarningDismissed, setDuplicateWarningDismissed] = useState(false);
-  const [debouncedProblemDesc, setDebouncedProblemDesc] = useState('');
-  const [appliedSuggestionFields, setAppliedSuggestionFields] = useState<Set<string>>(new Set());
-
-  // Debounce problem description to prevent classification on every keystroke
-  React.useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedProblemDesc(editingRequest?.problemDescription || '');
-    }, 200);
-    return () => clearTimeout(handler);
-  }, [editingRequest?.problemDescription]);
-
-  // Local Smart Request Classification (Feature 3)
-  const classificationSuggestions = useMemo(() => {
-    if (!isModalOpen || !debouncedProblemDesc || debouncedProblemDesc.trim().length < 3) {
-      return { hasAnySuggestion: false, overallConfidence: 'low' as const };
-    }
-    return classifyMaintenanceDescription(debouncedProblemDesc);
-  }, [debouncedProblemDesc, isModalOpen]);
-
-  // Local AI Duplicate Detection
-  const similarMatches = useMemo(() => {
-    if (!editingRequest || editingRequest.id || !isModalOpen) return [];
-    return findSimilarMaintenanceRequests(
-      {
-        stationId: editingRequest.stationId,
-        stationName: editingRequest.stationName,
-        section: editingRequest.section,
-        problemDescription: editingRequest.problemDescription,
-        requestType: editingRequest.requestType,
-        maintenanceType: editingRequest.maintenanceType
-      },
-      requests,
-      undefined,
-      38
-    );
-  }, [
-    editingRequest?.stationId,
-    editingRequest?.stationName,
-    editingRequest?.section,
-    editingRequest?.problemDescription,
-    editingRequest?.requestType,
-    editingRequest?.maintenanceType,
-    editingRequest?.id,
-    isModalOpen,
-    requests
-  ]);
 
   // Delete Confirm Modal for single item
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -295,16 +240,12 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
       createdAt: new Date().toISOString()
     });
     setFormError(null);
-    setDuplicateWarningDismissed(false);
-    setAppliedSuggestionFields(new Set());
     setIsModalOpen(true);
   };
 
   const handleOpenEditModal = (req: MaintenanceRequest) => {
     setEditingRequest({ ...req });
     setFormError(null);
-    setDuplicateWarningDismissed(true);
-    setAppliedSuggestionFields(new Set());
     setIsModalOpen(true);
   };
 
@@ -339,35 +280,6 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
     } catch (err: any) {
       setFormError(err?.message || 'تعذر حفظ طلب الصيانة في قاعدة البيانات السحابية.');
     }
-  };
-
-  const handleApplySingleSuggestion = (field: 'section' | 'requestType' | 'maintenanceType', value: string) => {
-    if (!editingRequest) return;
-    setEditingRequest({
-      ...editingRequest,
-      [field]: value
-    });
-    setAppliedSuggestionFields(prev => new Set(prev).add(field));
-  };
-
-  const handleApplyAllSuggestions = () => {
-    if (!classificationSuggestions.hasAnySuggestion || !editingRequest) return;
-    const updated = { ...editingRequest };
-    const newlyApplied = new Set(appliedSuggestionFields);
-    if (classificationSuggestions.section) {
-      updated.section = classificationSuggestions.section.value;
-      newlyApplied.add('section');
-    }
-    if (classificationSuggestions.requestType) {
-      updated.requestType = classificationSuggestions.requestType.value;
-      newlyApplied.add('requestType');
-    }
-    if (classificationSuggestions.maintenanceType) {
-      updated.maintenanceType = classificationSuggestions.maintenanceType.value;
-      newlyApplied.add('maintenanceType');
-    }
-    setEditingRequest(updated);
-    setAppliedSuggestionFields(newlyApplied);
   };
 
   const IconComp = sectionMeta.icon;
@@ -891,29 +803,12 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                   </select>
                 </div>
 
-                {/* Section Selection with Smart Suggestion */}
+                {/* Section Selection */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-slate-700">
                       القسم <span className="text-rose-500">*</span>
                     </label>
-                    {classificationSuggestions.section && !appliedSuggestionFields.has('section') && (
-                      <button
-                        type="button"
-                        onClick={() => handleApplySingleSuggestion('section', classificationSuggestions.section!.value)}
-                        className="text-[10px] font-bold text-orange-800 hover:text-orange-950 bg-orange-100/90 hover:bg-orange-200 px-2 py-0.5 rounded-md border border-orange-300 inline-flex items-center gap-1 cursor-pointer transition-all active:scale-95 animate-in fade-in"
-                        title={classificationSuggestions.section.reason}
-                      >
-                        <Sparkles className="w-2.5 h-2.5 text-orange-600" />
-                        <span>{classificationSuggestions.section.confidence === 'high' ? 'اقتراح موثوق' : 'اقتراح'}: {classificationSuggestions.section.label}</span>
-                        <span className="underline text-orange-600 mr-0.5 font-extrabold">تطبيق</span>
-                      </button>
-                    )}
-                    {classificationSuggestions.section && appliedSuggestionFields.has('section') && (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300 inline-flex items-center gap-1 animate-in fade-in">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> تم التطبيق
-                      </span>
-                    )}
                   </div>
                   <select
                     value={editingRequest.section}
@@ -927,29 +822,12 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                   </select>
                 </div>
 
-                {/* Request Type with Smart Suggestion */}
+                {/* Request Type */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-slate-700">
                       نوع الطلب <span className="text-rose-500">*</span>
                     </label>
-                    {classificationSuggestions.requestType && !appliedSuggestionFields.has('requestType') && (
-                      <button
-                        type="button"
-                        onClick={() => handleApplySingleSuggestion('requestType', classificationSuggestions.requestType!.value)}
-                        className="text-[10px] font-bold text-orange-800 hover:text-orange-950 bg-orange-100/90 hover:bg-orange-200 px-2 py-0.5 rounded-md border border-orange-300 inline-flex items-center gap-1 cursor-pointer transition-all active:scale-95 animate-in fade-in"
-                        title={classificationSuggestions.requestType.reason}
-                      >
-                        <Sparkles className="w-2.5 h-2.5 text-orange-600" />
-                        <span>{classificationSuggestions.requestType.confidence === 'high' ? 'اقتراح موثوق' : 'اقتراح'}: {classificationSuggestions.requestType.label}</span>
-                        <span className="underline text-orange-600 mr-0.5 font-extrabold">تطبيق</span>
-                      </button>
-                    )}
-                    {classificationSuggestions.requestType && appliedSuggestionFields.has('requestType') && (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300 inline-flex items-center gap-1 animate-in fade-in">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> تم التطبيق
-                      </span>
-                    )}
                   </div>
                   <input
                     type="text"
@@ -971,29 +849,12 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                   </datalist>
                 </div>
 
-                {/* Maintenance Type with Smart Suggestion */}
+                {/* Maintenance Type */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-slate-700">
                       نوع الصيانة
                     </label>
-                    {classificationSuggestions.maintenanceType && !appliedSuggestionFields.has('maintenanceType') && (
-                      <button
-                        type="button"
-                        onClick={() => handleApplySingleSuggestion('maintenanceType', classificationSuggestions.maintenanceType!.value)}
-                        className="text-[10px] font-bold text-orange-800 hover:text-orange-950 bg-orange-100/90 hover:bg-orange-200 px-2 py-0.5 rounded-md border border-orange-300 inline-flex items-center gap-1 cursor-pointer transition-all active:scale-95 animate-in fade-in"
-                        title={classificationSuggestions.maintenanceType.reason}
-                      >
-                        <Sparkles className="w-2.5 h-2.5 text-orange-600" />
-                        <span>{classificationSuggestions.maintenanceType.confidence === 'high' ? 'اقتراح موثوق' : 'اقتراح'}: {classificationSuggestions.maintenanceType.label}</span>
-                        <span className="underline text-orange-600 mr-0.5 font-extrabold">تطبيق</span>
-                      </button>
-                    )}
-                    {classificationSuggestions.maintenanceType && appliedSuggestionFields.has('maintenanceType') && (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300 inline-flex items-center gap-1 animate-in fade-in">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> تم التطبيق
-                      </span>
-                    )}
                   </div>
                   <input
                     type="text"
@@ -1096,220 +957,8 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
               </div>
 
               {/* SMART MAINTENANCE REQUEST CLASSIFICATION SUGGESTIONS (FEATURE 3) */}
-              {classificationSuggestions.hasAnySuggestion && !editingRequest.id && (
-                <div className="p-3.5 bg-orange-50/80 border border-orange-200/90 rounded-xl space-y-2.5 animate-in fade-in duration-150 text-right shadow-2xs">
-                  {/* SAFETY RISK ALERT BANNER */}
-                  {classificationSuggestions.safetyRisk && classificationSuggestions.safetyRisk.level === 'high' && (
-                    <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-rose-950 text-xs font-bold flex items-start gap-2.5 animate-in fade-in">
-                      <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                      <div>
-                        <div className="font-extrabold text-rose-950 flex items-center gap-1.5">
-                          <span>تنبيه سلامة وأمان عاجل</span>
-                          <span className="text-[10px] bg-rose-200 text-rose-900 px-1.5 py-0.2 rounded font-black">أولوية طارئة</span>
-                        </div>
-                        <div className="text-[11px] font-medium text-rose-800 mt-1">
-                          {classificationSuggestions.safetyRisk.warningMessage}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-orange-950">
-                      <Sparkles className="w-4 h-4 text-orange-600 shrink-0" />
-                      <span>اقتراحات التصنيف الذكي (تحليل سياقي فوري)</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleApplyAllSuggestions}
-                      className="text-[11px] font-bold text-orange-800 hover:text-orange-950 bg-white hover:bg-orange-100 px-2.5 py-1 rounded-lg border border-orange-300 cursor-pointer shadow-2xs transition-all active:scale-95"
-                    >
-                      تطبيق كافة الاقتراحات ✨
-                    </button>
-                  </div>
-
-                  {/* Context details: Equipment, Number, Location if detected */}
-                  {(classificationSuggestions.equipment || classificationSuggestions.location) && (
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] bg-white/80 p-2 rounded-lg border border-orange-200/70">
-                      {classificationSuggestions.equipment && (
-                        <div className="flex items-center gap-1 text-slate-700 font-semibold">
-                          <span className="text-slate-500 font-normal">المعدة المتأثرة:</span>
-                          <span className="font-bold text-slate-900 bg-orange-100/70 px-1.5 py-0.5 rounded">
-                            {classificationSuggestions.equipment.name} {classificationSuggestions.equipment.number ? `(رقم ${classificationSuggestions.equipment.number})` : ''}
-                          </span>
-                        </div>
-                      )}
-                      {classificationSuggestions.location && (
-                        <div className="flex items-center gap-1 text-slate-700 font-semibold">
-                          <span className="text-slate-500 font-normal">الموقع:</span>
-                          <span className="font-bold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded">
-                            {classificationSuggestions.location.name}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                    {/* Suggested Section */}
-                    {classificationSuggestions.section && (
-                      <div
-                        onClick={() => handleApplySingleSuggestion('section', classificationSuggestions.section!.value)}
-                        className={`p-2.5 rounded-lg border cursor-pointer transition-all flex flex-col justify-between ${
-                          appliedSuggestionFields.has('section')
-                            ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs'
-                            : 'bg-white hover:bg-orange-50 border-slate-200 text-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-semibold text-slate-500">القسم المقترح:</span>
-                          {appliedSuggestionFields.has('section') ? (
-                            <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5">
-                              <CheckCircle2 className="w-3 h-3" /> تم التطبيق
-                            </span>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <span className="text-[9px] font-bold text-orange-700 bg-orange-100 px-1 rounded">
-                                {classificationSuggestions.section.confidence === 'high' ? 'اقتراح موثوق' : 'اقتراح'}
-                              </span>
-                              <span className="text-[10px] font-bold text-orange-600 underline">تطبيق</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="font-extrabold text-xs">{classificationSuggestions.section.label}</div>
-                        <div className="text-[10px] text-slate-500 mt-1 truncate">{classificationSuggestions.section.reason}</div>
-                      </div>
-                    )}
-
-                    {/* Suggested Request Type */}
-                    {classificationSuggestions.requestType && (
-                      <div
-                        onClick={() => handleApplySingleSuggestion('requestType', classificationSuggestions.requestType!.value)}
-                        className={`p-2.5 rounded-lg border cursor-pointer transition-all flex flex-col justify-between ${
-                          appliedSuggestionFields.has('requestType')
-                            ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs'
-                            : 'bg-white hover:bg-orange-50 border-slate-200 text-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-semibold text-slate-500">نوع الطلب المقترح:</span>
-                          {appliedSuggestionFields.has('requestType') ? (
-                            <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5">
-                              <CheckCircle2 className="w-3 h-3" /> تم التطبيق
-                            </span>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <span className="text-[9px] font-bold text-orange-700 bg-orange-100 px-1 rounded">
-                                {classificationSuggestions.requestType.confidence === 'high' ? 'اقتراح موثوق' : 'اقتراح'}
-                              </span>
-                              <span className="text-[10px] font-bold text-orange-600 underline">تطبيق</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="font-extrabold text-xs">{classificationSuggestions.requestType.label}</div>
-                        <div className="text-[10px] text-slate-500 mt-1 truncate">{classificationSuggestions.requestType.reason}</div>
-                      </div>
-                    )}
-
-                    {/* Suggested Maintenance Type */}
-                    {classificationSuggestions.maintenanceType && (
-                      <div
-                        onClick={() => handleApplySingleSuggestion('maintenanceType', classificationSuggestions.maintenanceType!.value)}
-                        className={`p-2.5 rounded-lg border cursor-pointer transition-all flex flex-col justify-between ${
-                          appliedSuggestionFields.has('maintenanceType')
-                            ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs'
-                            : 'bg-white hover:bg-orange-50 border-slate-200 text-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-semibold text-slate-500">نوع الصيانة المقترح:</span>
-                          {appliedSuggestionFields.has('maintenanceType') ? (
-                            <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5">
-                              <CheckCircle2 className="w-3 h-3" /> تم التطبيق
-                            </span>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <span className="text-[9px] font-bold text-orange-700 bg-orange-100 px-1 rounded">
-                                {classificationSuggestions.maintenanceType.confidence === 'high' ? 'اقتراح موثوق' : 'اقتراح'}
-                              </span>
-                              <span className="text-[10px] font-bold text-orange-600 underline">تطبيق</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="font-extrabold text-xs">{classificationSuggestions.maintenanceType.label}</div>
-                        <div className="text-[10px] text-slate-500 mt-1 truncate">{classificationSuggestions.maintenanceType.reason}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {/* SMART DUPLICATE REQUEST WARNING (LOCAL AI-ASSISTED) */}
-              {similarMatches.length > 0 && !duplicateWarningDismissed && !editingRequest.id && (
-                <div className="p-3.5 bg-amber-50/90 border border-amber-300 rounded-xl space-y-2.5 animate-toast text-right shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-amber-900 font-extrabold text-xs">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>⚠️ يوجد طلب صيانة مشابه</span>
-                    </div>
-                    <span className="text-[11px] font-bold text-amber-800 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200 font-mono">
-                      نسبة التطابق: {similarMatches[0].similarityPercentage}%
-                    </span>
-                  </div>
-
-                  <div className="bg-white p-3 rounded-xl border border-amber-200 text-xs text-slate-700 space-y-1.5">
-                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500 font-mono">
-                      <span>رقم الطلب: <strong className="text-slate-900 font-bold">{similarMatches[0].request.requestNumber}</strong></span>
-                      <span>التاريخ: {similarMatches[0].request.date}</span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600">
-                      <span><strong>المحطة:</strong> {similarMatches[0].request.stationName}</span>
-                      <span>•</span>
-                      <span><strong>القسم:</strong> {similarMatches[0].request.section === 'pumps' ? 'المضخات' : similarMatches[0].request.section === 'tanks' ? 'الخزانات' : 'المرافق'}</span>
-                      <span>•</span>
-                      <span>
-                        <strong>الحالة الحالية:</strong>{' '}
-                        <span className={`inline-block font-bold px-1.5 py-0.5 rounded text-[10px] ${
-                          similarMatches[0].request.status === 'تم'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : similarMatches[0].request.status === 'جاري العمل'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-amber-100 text-amber-900'
-                        }`}>
-                          {similarMatches[0].request.status}
-                        </span>
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200/80 leading-relaxed font-medium">
-                      "{similarMatches[0].request.problemDescription}"
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditModal(similarMatches[0].request)}
-                      className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-2xs active:scale-95"
-                    >
-                      فتح الطلب
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDuplicateWarningDismissed(true)}
-                      className="px-3.5 py-1.5 bg-white border border-amber-300 hover:bg-amber-100/60 text-amber-950 font-bold text-xs rounded-xl transition-all cursor-pointer active:scale-95"
-                    >
-                      متابعة إضافة الطلب
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDuplicateWarningDismissed(true)}
-                      className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 font-bold text-xs rounded-lg transition-colors cursor-pointer"
-                    >
-                      إلغاء
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* Action Taken */}
               <div>
