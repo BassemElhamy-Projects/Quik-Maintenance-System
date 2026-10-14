@@ -285,7 +285,7 @@ export async function loadAppDataAsync(): Promise<{
           isDriveAvailable: true,
           cloudIsEmpty: true,
           localDataPreserved: true,
-          error: 'قاعدة البيانات السحابية خالية حالياً. تم الاحتفاظ بالبيانات المحلية لحمايتها من الضياع.'
+          error: 'قاعدة البيانات فارغة حالياً. تم الاحتفاظ بالبيانات المحفوظة على الجهاز لحمايتها من الضياع.'
         };
       }
 
@@ -315,7 +315,7 @@ export async function loadAppDataAsync(): Promise<{
       cloudIsEmpty: false,
       localDataPreserved: true,
       errorCategory: category,
-      error: cloudRes.error || 'تعذر تحميل البيانات من الخدمة السحابية.'
+      error: cloudRes.error || 'تعذر تحميل البيانات من النظام.'
     };
   }
 
@@ -327,7 +327,7 @@ export async function loadAppDataAsync(): Promise<{
     cloudIsEmpty: false,
     localDataPreserved: false,
     errorCategory: category,
-    error: cloudRes.error || 'تعذر تحميل البيانات من الخدمة السحابية. يرجى التحقق من اتصال الإنترنت.'
+    error: cloudRes.error || 'تعذر تحميل البيانات من النظام. يرجى التحقق من اتصال الإنترنت.'
   };
 }
 
