@@ -140,7 +140,7 @@ export const ExcelImportPreviewModal: React.FC<ExcelImportPreviewModalProps> = (
       );
 
       if (result && !result.success) {
-        setImportError(result.error || 'فشل استيراد البيانات إلى الخدمة السحابية. يرجى المحاولة مرة أخرى.');
+        setImportError(result.error || 'فشل استيراد البيانات. يرجى مراجعة الملف والمحاولة مرة أخرى.');
       }
     } catch (err: any) {
       console.error('[CONFIRM EXCEL IMPORT MODAL ERROR]:', err);
