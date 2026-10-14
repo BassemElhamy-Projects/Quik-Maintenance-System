@@ -35,7 +35,7 @@ export interface CloudBackupItem {
   snapshot_data?: any;
 }
 
-export const DEFAULT_BACKUP_ERROR = 'تعذّر إتمام عملية النسخ الاحتياطي السحابي. حاول مرة أخرى أو تواصل مع مسؤول النظام.';
+export const DEFAULT_BACKUP_ERROR = 'تعذّر إتمام النسخ الاحتياطي. حاول مرة أخرى أو تواصل مع مسؤول النظام.';
 
 /**
  * Checks whether an error message is a safe Arabic business error
@@ -106,14 +106,14 @@ function sanitizeBackupError(msg?: string, context?: string): string {
     return 'تعذر استكمال العملية بسبب وجود سجلات مكررة بنفس المعرّف الرئيسي.';
   }
   if (lower.includes('network') || lower.includes('fetch') || lower.includes('failed to fetch')) {
-    return 'تعذر الاتصال بالخدمة السحابية. يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى.';
+    return 'تعذر الاتصال بالخدمة. يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى.';
   }
 
   // Clean any potential sensitive tokens or URLs while preserving clear error message
   const cleanedMsg = msg.replace(/bearer\s+[a-zA-Z0-9\._\-]+/gi, '[TOKEN]')
                         .replace(/key=[a-zA-Z0-9\._\-]+/gi, 'key=[KEY]');
 
-  return `تعذر استكمال العملية السحابية: ${cleanedMsg}`;
+  return `تعذر استكمال العملية: ${cleanedMsg}`;
 }
 
 /**
@@ -428,7 +428,7 @@ export async function createCloudBackup(
   backupType: 'manual' | 'automatic' | 'safety' = 'manual',
   notes?: string
 ): Promise<{ success: boolean; backup?: CloudBackupItem; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -535,7 +535,7 @@ export async function createCloudBackup(
  * Restores cloud database from a stored backup ID
  */
 export async function restoreCloudBackup(backupId: string): Promise<{ success: boolean; data?: any; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
   try {
     // 1. Fetch target backup record
@@ -617,7 +617,7 @@ export async function restoreCloudBackup(backupId: string): Promise<{ success: b
     return {
       success: true,
       data: {
-        message: 'تم استعادة قاعدة البيانات السحابية بنجاح.',
+        message: 'تمت استعادة البيانات بنجاح.',
       }
     };
   } catch (err: any) {
@@ -810,7 +810,7 @@ export function restoreFromLocalBackupSnapshot(snapshotData: any): Promise<{
 
       return {
         success: true,
-        message: 'تمت استعادة قاعدة البيانات السحابية من ملف الحاسوب بنجاح والتحقق من مطابقة كافة أعداد السجلات.',
+        message: 'تمت استعادة البيانات من الملف بنجاح والتحقق من مطابقة أعداد السجلات.',
         verifiedCounts: {
           maintenance_requests: actualMaint,
           stations: actualSt,
@@ -833,7 +833,7 @@ export function restoreFromLocalBackupSnapshot(snapshotData: any): Promise<{
  * Lists all cloud backups stored in Supabase
  */
 export async function listCloudBackups(): Promise<{ success: boolean; backups?: CloudBackupItem[]; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
   try {
     const { data, error } = await supabase
@@ -871,7 +871,7 @@ export async function listCloudBackups(): Promise<{ success: boolean; backups?: 
  * Fetches single cloud backup with full snapshot data
  */
 export async function getCloudBackup(id: string): Promise<{ success: boolean; backup?: CloudBackupItem; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
   try {
     const { data, error } = await supabase
@@ -909,7 +909,7 @@ export async function getCloudBackup(id: string): Promise<{ success: boolean; ba
  * Deletes a single cloud backup entry from cloud_backups table
  */
 export async function deleteCloudBackup(id: string): Promise<{ success: boolean; message?: string; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
   try {
     const { error } = await supabase
@@ -924,7 +924,7 @@ export async function deleteCloudBackup(id: string): Promise<{ success: boolean;
       return { success: false, error: sanitizeBackupError(error.message, 'deleteCloudBackup') };
     }
 
-    return { success: true, message: 'تم حذف النسخة الاحتياطية السحابية بنجاح.' };
+    return { success: true, message: 'تم حذف النسخة الاحتياطية بنجاح.' };
   } catch (err: any) {
     return { success: false, error: sanitizeBackupError(err?.message, 'deleteCloudBackup') };
   }
@@ -947,7 +947,7 @@ export async function executeCloudSafetyBackup(reason = 'نسخة أمان أو�
   }
   return {
     success: false,
-    error: res.error || 'فشل تخليد نسخة الأمان السحابية.'
+    error: res.error || 'تعذر إنشاء النسخة الاحتياطية.'
   };
 }
 
