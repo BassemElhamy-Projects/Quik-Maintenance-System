@@ -10,7 +10,6 @@ import {
   InspectionEvaluation
 } from '../types';
 import { OFFICIAL_STATIONS } from '../data/officialStations';
-import { executeCloudSafetyBackup } from './cloudBackupService';
 
 /**
  * Validates whether a string is a standard RFC 4122 UUID
@@ -1517,32 +1516,22 @@ export async function importExcelRecordsToCloud(
 }
 
 // ---------------------------------------------------------------------------
-// CLEAR ALL RECORDS (STRICT CLOUD DELETION & VERIFIED SAFETY BACKUP)
+// CLEAR ALL RECORDS (CLOUD DELETION)
 // ---------------------------------------------------------------------------
 
 /**
- * Clears all transaction records from the cloud database (Maintenance Requests, Inspections, Incidents).
- * Strictly requires verified Cloud Safety Backup before deletion.
- * Preserves central stations directory and configuration.
+ * Clears transaction records from the cloud database (Maintenance Requests, Inspections, Incidents).
+ * Does not create a mandatory safety backup before deletion.
+ * Preserves the central stations directory and configuration.
  */
 export async function clearAllCloudRecords(): Promise<{
   success: boolean;
-  safetyBackupId?: string;
   error?: string;
 }> {
   if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
 
-  // 1. Mandatory verified Cloud Safety Backup
-  const safetyRes = await executeCloudSafetyBackup('مسح شامل لكافة سجلات الصيانة والتفتيش والحوادث');
-  if (!safetyRes.success || !safetyRes.safetyBackupId) {
-    return {
-      success: false,
-      error: `تم إلغاء عملية المسح لحماية البيانات: ${safetyRes.error || 'فشل إنشاء نسخة الأمان السحابية'}`
-    };
-  }
-
   try {
-    // 2. Delete all records in correct foreign-key dependency order
+    // 1. Delete records in the existing foreign-key dependency order
     // Step A: Delete child transactional tables first
     const [delMaint, delInsp, delInc] = await Promise.all([
       supabase.from('maintenance_requests').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
@@ -1563,14 +1552,9 @@ export async function clearAllCloudRecords(): Promise<{
       throw new Error('فشل مسح بلاغات الحوادث من قاعدة البيانات السحابية.');
     }
 
-    // Step B: Delete parent stations table
-    const delStations = await supabase.from('stations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    if (delStations.error) {
-      console.error('[CLEAR STATIONS ERROR]:', delStations.error.message);
-      throw new Error('فشل مسح سجلات المحطات من قاعدة البيانات السحابية.');
-    }
+    // Keep the central stations directory intact.
 
-    // 3. Reset section counters to 0
+    // 2. Reset section counters to 0
     const counterResets = ['pumps', 'tanks', 'facilities', 'inspections', 'incidents'].map(sec => ({
       section_name: sec,
       last_number: 0,
@@ -1578,12 +1562,11 @@ export async function clearAllCloudRecords(): Promise<{
     }));
     await supabase.from('section_counters').upsert(counterResets);
 
-    // 4. Verify post-delete zero counts in Supabase across all operational tables
-    const [maintCheck, inspCheck, incCheck, stCheck] = await Promise.all([
+    // 3. Verify post-delete zero counts for transactional records
+    const [maintCheck, inspCheck, incCheck] = await Promise.all([
       supabase.from('maintenance_requests').select('id', { count: 'exact', head: true }),
       supabase.from('internal_inspections').select('id', { count: 'exact', head: true }),
-      supabase.from('incident_records').select('id', { count: 'exact', head: true }),
-      supabase.from('stations').select('id', { count: 'exact', head: true })
+      supabase.from('incident_records').select('id', { count: 'exact', head: true })
     ]);
 
     if (maintCheck.error || (maintCheck.count !== null && maintCheck.count > 0)) {
@@ -1595,14 +1578,7 @@ export async function clearAllCloudRecords(): Promise<{
     if (incCheck.error || (incCheck.count !== null && incCheck.count > 0)) {
       throw new Error('تعذر التحقق من تفريغ جدول بلاغات الحوادث بالكامل.');
     }
-    if (stCheck.error || (stCheck.count !== null && stCheck.count > 0)) {
-      throw new Error('تعذر التحقق من تفريغ جدول المحطات بالكامل.');
-    }
-
-    return {
-      success: true,
-      safetyBackupId: safetyRes.safetyBackupId
-    };
+    return { success: true };
   } catch (err: any) {
     console.error('[CLEAR ALL CLOUD ERROR]:', err);
     const hasSafeArabic = typeof err?.message === 'string' && /[\u0600-\u06FF]/.test(err.message) && !/[a-zA-Z]/.test(err.message);
