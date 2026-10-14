@@ -497,7 +497,7 @@ export const UsersManagementModal: React.FC<UsersManagementModalProps> = ({ isOp
           {isLoading ? (
             <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-3 text-xs">
               <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-              <span>جاري تحميل بيانات المستخدمين من السحابة...</span>
+              <span>جاري تحميل بيانات المستخدمين...</span>
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-2 text-xs">
