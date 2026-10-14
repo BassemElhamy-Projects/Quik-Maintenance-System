@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Fuel,
   Home,
   Database,
   User,
@@ -69,9 +68,11 @@ export const Header: React.FC<HeaderProps> = ({
                 className="flex items-center gap-3 sm:gap-3.5 text-right group focus:outline-hidden transition-transform active:scale-98 cursor-pointer"
                 title="العودة إلى لوحة التحكم الرئيسية"
               >
-                <div className="p-2.5 sm:p-3 rounded-2xl bg-gradient-to-tr from-orange-500 to-orange-600 text-white shadow-md shadow-orange-500/20 group-hover:shadow-lg group-hover:shadow-orange-500/30 transition-all shrink-0">
-                  <Fuel className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.5]" />
-                </div>
+                <img
+                  src="/quik-logo.png"
+                  alt="Quik"
+                  className="w-14 h-10 sm:w-16 sm:h-12 object-contain shrink-0"
+                />
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-lg sm:text-xl font-black text-slate-900 tracking-tight leading-none group-hover:text-orange-600 transition-colors">
