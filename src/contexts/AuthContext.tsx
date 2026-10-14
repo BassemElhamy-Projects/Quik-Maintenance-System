@@ -269,7 +269,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setAuthError(null);
 
     if (!supabase) {
-      const err = 'تعذر تهيئة الاتصال بالخدمة السحابية. يرجى التواصل مع مسؤول النظام.';
+      const err = 'تعذر تهيئة الاتصال بالنظام. يرجى التواصل مع مسؤول النظام.';
       setAuthError(err);
       return { success: false, error: err };
     }
@@ -411,7 +411,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   ): Promise<{ success: boolean; error?: string }> => {
     setAuthError(null);
     if (!supabase) {
-      const err = 'تعذر تهيئة الاتصال بالخدمة السحابية. يرجى التواصل مع مسؤول النظام.';
+      const err = 'تعذر تهيئة الاتصال بالنظام. يرجى التواصل مع مسؤول النظام.';
       setAuthError(err);
       return { success: false, error: err };
     }
@@ -457,7 +457,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const hasTechnicalTokens = /(?:functions?|error:|exception|status code|network|fail|500|400|403|404)/i.test(rawErr);
         const errMessage = hasArabic && !hasTechnicalTokens
           ? rawErr
-          : 'تعذر إتمام تهيئة حساب مدير النظام الأول عبر الخدمة السحابية. يرجى التواصل مع مسؤول النظام.';
+          : 'تعذر إتمام تهيئة حساب مدير النظام الأول. يرجى التواصل مع مسؤول النظام.';
 
         setAuthError(errMessage);
         setIsLoading(false);
