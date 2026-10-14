@@ -1,977 +1,1644 @@
-import { supabase } from './supabaseClient';
-import { migrateAndRenumberCloudRecordsDirectly, isValidUUID } from './cloudDataService';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
+import {
+  AppData,
+  MaintenanceRequest,
+  InternalInspection,
+  IncidentRecord,
+  Station,
+  StationStatus,
+  MaintenanceStatus,
+  InspectionEvaluation
+} from '../types';
 import { OFFICIAL_STATIONS } from '../data/officialStations';
 
-export function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-export interface CloudBackupItem {
-  id: string;
-  filename: string;
-  backup_type: 'automatic' | 'manual' | 'safety';
-  status: 'successful' | 'failed';
-  size_bytes: number;
-  created_by?: string;
-  created_by_name: string;
-  record_counts: {
-    profiles?: number;
-    stations?: number;
-    section_counters?: number;
-    maintenance_requests?: number;
-    internal_inspections?: number;
-    incident_records?: number;
-    audit_logs?: number;
-  };
-  notes?: string;
-  created_at: string;
-  snapshot_data?: any;
-}
-
-export const DEFAULT_BACKUP_ERROR = 'تعذّر إتمام النسخ الاحتياطي. حاول مرة أخرى أو تواصل مع مسؤول النظام.';
-
 /**
- * Checks whether an error message is a safe Arabic business error
+ * Validates whether a string is a standard RFC 4122 UUID
  */
-function isSafeArabicBusinessError(msg?: string): boolean {
-  if (!msg || typeof msg !== 'string') return false;
-  const trimmed = msg.trim();
-  if (trimmed.length === 0) return false;
-
-  const hasArabicChars = /[\u0600-\u06FF]/.test(trimmed);
-  if (!hasArabicChars) return false;
-
-  const technicalPatterns = [
-    /pgrst/i,
-    /postgres/i,
-    /sql/i,
-    /database/i,
-    /syntax\s*error/i,
-    /column/i,
-    /relation/i,
-    /duplicate\s*key/i,
-    /foreign\s*key/i,
-    /violates/i,
-    /null\s*value/i,
-    /json/i,
-    /jwt/i,
-    /token/i,
-    /typeerror/i,
-    /error\s*:/i,
-    /http[s]?:\/\//i,
-    /supabase/i,
-    /vite_/i,
-    /\{|\}|<|>/,
-    /\b(?:400|401|403|404|500|502|503)\b/
-  ];
-
-  for (const pattern of technicalPatterns) {
-    if (pattern.test(trimmed)) {
-      return false;
-    }
-  }
-
-  return true;
+export function isValidUUID(str?: string | null): boolean {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str.trim());
 }
 
 /**
- * Sanitizes and enriches error messages from cloud backup backend with developer logging
+ * Normalizes Eastern Arabic numerals (٠-٩) to standard ASCII digits (0-9)
  */
-function sanitizeBackupError(msg?: string, context?: string): string {
-  if (!msg) return DEFAULT_BACKUP_ERROR;
-
-  // Log detailed technical error for developer console debugging
-  console.error(`[CLOUD BACKUP SERVICE ERROR]${context ? ` [${context}]` : ''}:`, msg);
-
-  if (isSafeArabicBusinessError(msg)) {
-    return msg.trim();
-  }
-
-  const lower = msg.toLowerCase();
-
-  if (lower.includes('row-level security') || lower.includes('rls') || lower.includes('permission') || lower.includes('42501')) {
-    return 'فشل تنفيذ العملية بسبب سياسات صلاحيات الوصول (RLS). يرجى التأكد من تسجيل الدخول بحساب مدير نظام مفعّل.';
-  }
-  if (lower.includes('foreign key') || lower.includes('violates foreign key constraint')) {
-    return 'تعذر استكمال العملية بسبب وجود تعارض في قيود العلاقات بين المحطات والطلبات.';
-  }
-  if (lower.includes('duplicate key') || lower.includes('already exists')) {
-    return 'تعذر استكمال العملية بسبب وجود سجلات مكررة بنفس المعرّف الرئيسي.';
-  }
-  if (lower.includes('network') || lower.includes('fetch') || lower.includes('failed to fetch')) {
-    return 'تعذر الاتصال بالخدمة. يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى.';
-  }
-
-  // Clean any potential sensitive tokens or URLs while preserving clear error message
-  const cleanedMsg = msg.replace(/bearer\s+[a-zA-Z0-9\._\-]+/gi, '[TOKEN]')
-                        .replace(/key=[a-zA-Z0-9\._\-]+/gi, 'key=[KEY]');
-
-  return `تعذر استكمال العملية: ${cleanedMsg}`;
+function normalizeDigits(str: string): string {
+  return str.replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 1632));
 }
 
 /**
- * Flexible normalizer for JSON backup snapshots (supports cloud snake_case, camelCase exports, legacy formats, and flat objects)
+ * Validates and clamps a year, month, day triplet to a strictly valid Gregorian calendar date.
+ * Strictly clamps day to the actual number of days in that month (e.g. 2026-02-30 -> 2026-02-28).
+ * Prevents PostgreSQL "date/time field value out of range" exceptions.
  */
-export function normalizeSnapshotData(input: string | object): {
-  isValid: boolean;
-  error?: string;
-  filename?: string;
-  version?: number | string;
-  createdAt?: string;
-  tables: {
-    stations: any[];
-    maintenance_requests: any[];
-    internal_inspections: any[];
-    incident_records: any[];
-    section_counters: any[];
-    profiles: any[];
-    audit_logs: any[];
-  };
-  recordCounts: {
-    stations: number;
-    maintenance_requests: number;
-    internal_inspections: number;
-    incident_records: number;
-    section_counters: number;
-    profiles: number;
-    audit_logs: number;
-  };
-  rawSnapshot?: any;
-} {
-  let data: any;
+export function buildValidCalendarDate(
+  rawYear: number | string,
+  rawMonth: number | string,
+  rawDay: number | string
+): string | null {
+  const y = parseInt(String(rawYear), 10);
+  let m = parseInt(String(rawMonth), 10);
+  let d = parseInt(String(rawDay), 10);
 
-  if (typeof input === 'string') {
-    try {
-      data = JSON.parse(input);
-    } catch {
-      return {
-        isValid: false,
-        error: 'ملف النسخة الاحتياطية غير صريح أو يحتوي على صيغة JSON غير صالحة.',
-        tables: { stations: [], maintenance_requests: [], internal_inspections: [], incident_records: [], section_counters: [], profiles: [], audit_logs: [] },
-        recordCounts: { maintenance_requests: 0, stations: 0, section_counters: 0, internal_inspections: 0, incident_records: 0, profiles: 0, audit_logs: 0 }
-      };
-    }
-  } else if (typeof input === 'object' && input !== null) {
-    data = input;
-  } else {
-    return {
-      isValid: false,
-      error: 'محتوى ملف النسخة الاحتياطية غير صالح.',
-      tables: { stations: [], maintenance_requests: [], internal_inspections: [], incident_records: [], section_counters: [], profiles: [], audit_logs: [] },
-      recordCounts: { maintenance_requests: 0, stations: 0, section_counters: 0, internal_inspections: 0, incident_records: 0, profiles: 0, audit_logs: 0 }
-    };
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+  if (y < 1970 || y > 2100) return null;
+
+  // If month is > 12 but day is <= 12, swap them (handles inverted DD/MM vs MM/DD)
+  if (m > 12 && d <= 12) {
+    const temp = m;
+    m = d;
+    d = temp;
   }
 
-  if (!data || typeof data !== 'object' || Array.isArray(data)) {
-    return {
-      isValid: false,
-      error: 'هيكل ملف النسخة الاحتياطية غير صالح - يجب أن يكون كائناً بنية JSON.',
-      tables: { stations: [], maintenance_requests: [], internal_inspections: [], incident_records: [], section_counters: [], profiles: [], audit_logs: [] },
-      recordCounts: { maintenance_requests: 0, stations: 0, section_counters: 0, internal_inspections: 0, incident_records: 0, profiles: 0, audit_logs: 0 }
-    };
+  m = Math.min(Math.max(1, m), 12);
+  const maxDays = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  d = Math.min(Math.max(1, d), maxDays);
+
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/**
+ * Ensures any date value sent to PostgreSQL DATE column is strictly in valid YYYY-MM-DD format.
+ * Strictly guarantees that calendar day/month bounds are respected (e.g. 2026-02-30 -> 2026-02-28).
+ * Prevents "invalid input syntax for type date" and "date/time field value out of range" exceptions.
+ */
+export function toValidIsoDate(val: any, fallback: string = new Date().toISOString().slice(0, 10)): string {
+  if (!val) return fallback;
+
+  // Handle JavaScript Date instance directly
+  if (val instanceof Date) {
+    if (!isNaN(val.getTime()) && val.getFullYear() >= 1970 && val.getFullYear() <= 2100) {
+      const valid = buildValidCalendarDate(val.getFullYear(), val.getMonth() + 1, val.getDate());
+      if (valid) return valid;
+    }
+    return fallback;
   }
 
-  // Support enveloped (tables/data/snapshot_data) and flat JSON structures
-  const targetObj = data.snapshot_data?.tables || data.snapshot_data || data.tables || data.data?.tables || data.data || data;
+  let str = String(val).trim();
+  if (!str) return fallback;
 
-  const candidateTables = data.tables || data.snapshot_data?.tables || data.data?.tables;
-  if (candidateTables && typeof candidateTables === 'object') {
-    const t = candidateTables;
-    if (!('maintenance_requests' in t) && !('maintenanceRequests' in t)) {
-      return {
-        isValid: false,
-        error: 'جدول طلبات الصيانة (maintenance_requests) مفقود في ملف النسخة الاحتياطية.',
-        tables: { stations: [], maintenance_requests: [], internal_inspections: [], incident_records: [], section_counters: [], profiles: [], audit_logs: [] },
-        recordCounts: { maintenance_requests: 0, stations: 0, section_counters: 0, internal_inspections: 0, incident_records: 0, profiles: 0, audit_logs: 0 }
-      };
-    }
-    const maintProp = t.maintenance_requests ?? t.maintenanceRequests;
-    if (maintProp !== undefined && !Array.isArray(maintProp)) {
-      return {
-        isValid: false,
-        error: 'جدول طلبات الصيانة (maintenance_requests) يحتوي على هيكل غير صالح - يجب أن يكون مصفوفة.',
-        tables: { stations: [], maintenance_requests: [], internal_inspections: [], incident_records: [], section_counters: [], profiles: [], audit_logs: [] },
-        recordCounts: { maintenance_requests: 0, stations: 0, section_counters: 0, internal_inspections: 0, incident_records: 0, profiles: 0, audit_logs: 0 }
-      };
-    }
+  // Convert Eastern Arabic numerals
+  str = normalizeDigits(str);
+
+  // If contains Arabic letters, it is definitely not a date
+  if (/[\u0600-\u06FF]/.test(str)) {
+    return fallback;
   }
 
-  // Extract raw arrays with camelCase & snake_case fallbacks
-  const rawStations = Array.isArray(targetObj.stations) ? targetObj.stations : (Array.isArray(targetObj.Station) ? targetObj.Station : []);
-  
-  const rawMaint = Array.isArray(targetObj.maintenance_requests) ? targetObj.maintenance_requests : 
-                   (Array.isArray(targetObj.maintenanceRequests) ? targetObj.maintenanceRequests : []);
-
-  const rawInsp = Array.isArray(targetObj.internal_inspections) ? targetObj.internal_inspections : 
-                 (Array.isArray(targetObj.inspections) ? targetObj.inspections : []);
-
-  const rawInc = Array.isArray(targetObj.incident_records) ? targetObj.incident_records : 
-                 (Array.isArray(targetObj.incidents) ? targetObj.incidents : []);
-
-  const rawCounters = Array.isArray(targetObj.section_counters) ? targetObj.section_counters : 
-                      (Array.isArray(targetObj.sectionCounters) ? targetObj.sectionCounters : []);
-
-  const rawProfiles = Array.isArray(targetObj.profiles) ? targetObj.profiles : [];
-  const rawAudit = Array.isArray(targetObj.audit_logs) ? targetObj.audit_logs : [];
-
-  const legacyStationToUuidMap = new Map<string, string>();
-
-  // Normalize Stations to PostgreSQL snake_case columns with strictly valid UUIDs
-  const normStations = rawStations.map((s: any, idx: number) => {
-    let stationUuid: string;
-    if (isValidUUID(s.id)) {
-      stationUuid = String(s.id).trim().toLowerCase();
-    } else {
-      stationUuid = generateUUID();
-      if (s.id) {
-        legacyStationToUuidMap.set(String(s.id), stationUuid);
+  // Handle numeric Excel date serial (e.g. 45210)
+  if (typeof val === 'number' || (!isNaN(Number(val)) && !str.includes('-') && !str.includes('/') && !str.includes('.'))) {
+    const num = Number(val);
+    if (num > 30000 && num < 60000) {
+      const parsedDate = new Date(Math.round((num - 25569) * 86400 * 1000));
+      if (!isNaN(parsedDate.getTime())) {
+        return parsedDate.toISOString().slice(0, 10);
       }
     }
+  }
 
-    if (s.code) legacyStationToUuidMap.set(String(s.code), stationUuid);
-    if (s.stationCode) legacyStationToUuidMap.set(String(s.stationCode), stationUuid);
-    if (s.name) legacyStationToUuidMap.set(String(s.name), stationUuid);
-    if (s.stationName) legacyStationToUuidMap.set(String(s.stationName), stationUuid);
+  // Format 1: YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const ymdMatch = str.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (ymdMatch) {
+    const valid = buildValidCalendarDate(ymdMatch[1], ymdMatch[2], ymdMatch[3]);
+    if (valid) return valid;
+  }
 
-    return {
-      id: stationUuid,
-      code: (s.code || s.stationCode || (idx + 1)).toString(),
-      name: s.name || s.stationName || `محطة ${idx + 1}`,
-      region: s.region || 'الرياض',
-      city: s.city || null,
-      address: s.address || null,
-      status: s.status || 'نشطة',
-      phone: s.phone || null,
-      supervisor: s.supervisor || null,
-      notes: s.notes || null,
-      is_default: Boolean(s.is_default ?? s.isDefault),
-      created_at: s.created_at || s.createdAt || new Date().toISOString(),
-      updated_at: s.updated_at || s.updatedAt || new Date().toISOString()
-    };
-  });
+  // Format 2: DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmyMatch) {
+    const valid = buildValidCalendarDate(dmyMatch[3], dmyMatch[2], dmyMatch[1]);
+    if (valid) return valid;
+  }
 
-  // Helper to resolve valid UUID for station_id
-  const resolveStationId = (rawStId: any, code: any, name: any): string | null => {
-    if (isValidUUID(rawStId)) {
-      return String(rawStId).trim().toLowerCase();
-    }
-    if (rawStId && legacyStationToUuidMap.has(String(rawStId))) {
-      return legacyStationToUuidMap.get(String(rawStId))!;
-    }
-    if (code && legacyStationToUuidMap.has(String(code))) {
-      return legacyStationToUuidMap.get(String(code))!;
-    }
-    if (name && legacyStationToUuidMap.has(String(name))) {
-      return legacyStationToUuidMap.get(String(name))!;
-    }
-    if (normStations.length > 0) {
-      return normStations[0].id;
-    }
+  // Format 3: General Date parse
+  const d = new Date(str);
+  if (!isNaN(d.getTime()) && d.getFullYear() >= 1970 && d.getFullYear() <= 2100) {
+    const valid = buildValidCalendarDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    if (valid) return valid;
+  }
+
+  return fallback;
+}
+
+export function toOptionalValidIsoDate(val: any): string | null {
+  if (!val) return null;
+  let str = String(val).trim();
+  if (!str) return null;
+  if (/[\u0600-\u06FF]/.test(str)) return null;
+  const res = toValidIsoDate(str, '');
+  return res ? res : null;
+}
+
+/**
+ * Helper to safely extract authenticated user ID for audit created_by fields
+ */
+async function getCurrentUserId(): Promise<string | null> {
+  if (!supabase) return null;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id || null;
+  } catch {
     return null;
-  };
-
-  // Normalize Maintenance Requests to PostgreSQL snake_case columns
-  const normMaint = rawMaint.map((r: any, idx: number) => {
-    const matchedStationId = resolveStationId(
-      r.station_id || r.stationId,
-      r.station_code || r.stationCode,
-      r.station_name || r.stationName
-    );
-
-    return {
-      id: isValidUUID(r.id) ? String(r.id).trim().toLowerCase() : generateUUID(),
-      request_number: (r.request_number || r.requestNumber || (idx + 1)).toString(),
-      section: r.section || 'pumps',
-      date: r.date || new Date().toISOString().slice(0, 10),
-      station_id: matchedStationId,
-      station_name: r.station_name || r.stationName || (normStations[0]?.name || 'محطة غير محددة'),
-      station_code: r.station_code || r.stationCode || (normStations[0]?.code || '1'),
-      requester: r.requester || 'غير محدد',
-      request_type: r.request_type || r.requestType || 'طلب صيانة',
-      maintenance_type: r.maintenance_type || r.maintenanceType || 'صيانة عامة',
-      problem_description: r.problem_description || r.problemDescription || 'لا يوجد وصف',
-      technician: r.technician || '',
-      action_taken: r.action_taken || r.actionTaken || '',
-      completion_notes: r.completion_notes || r.completionNotes || '',
-      status: r.status || 'جديد',
-      created_at: r.created_at || r.createdAt || new Date().toISOString()
-    };
-  });
-
-  // Normalize Internal Inspections to PostgreSQL snake_case columns
-  const normInsp = rawInsp.map((i: any, idx: number) => {
-    const matchedStationId = resolveStationId(
-      i.station_id || i.stationId,
-      i.station_code || i.stationCode,
-      i.station_name || i.stationName
-    );
-
-    return {
-      id: isValidUUID(i.id) ? String(i.id).trim().toLowerCase() : generateUUID(),
-      inspection_number: (i.inspection_number || i.inspectionNumber || (idx + 1)).toString(),
-      date: i.date || new Date().toISOString().slice(0, 10),
-      station_id: matchedStationId,
-      station_name: i.station_name || i.stationName || (normStations[0]?.name || 'محطة غير محددة'),
-      station_code: i.station_code || i.stationCode || (normStations[0]?.code || '1'),
-      inspector_name: i.inspector_name || i.inspectorName || 'المفتش',
-      notes: i.notes || '',
-      status: i.status || 'مكتمل',
-      created_at: i.created_at || i.createdAt || new Date().toISOString()
-    };
-  });
-
-  // Normalize Incident Records to PostgreSQL snake_case columns
-  const normInc = rawInc.map((ic: any, idx: number) => {
-    const matchedStationId = resolveStationId(
-      ic.station_id || ic.stationId,
-      ic.station_code || ic.stationCode,
-      ic.station_name || ic.stationName
-    );
-
-    return {
-      id: isValidUUID(ic.id) ? String(ic.id).trim().toLowerCase() : generateUUID(),
-      incident_number: (ic.incident_number || ic.incidentNumber || (idx + 1)).toString(),
-      date: ic.date || new Date().toISOString().slice(0, 10),
-      station_id: matchedStationId,
-      station_name: ic.station_name || ic.stationName || (normStations[0]?.name || 'محطة غير محددة'),
-      station_code: ic.station_code || ic.stationCode || (normStations[0]?.code || '1'),
-      reporter_name: ic.reporter_name || ic.reporterName || 'المبلغ',
-      incident_type: ic.incident_type || ic.incidentType || 'أخرى',
-      severity: ic.severity || 'متوسطة',
-      description: ic.description || '',
-      action_taken: ic.action_taken || ic.actionTaken || '',
-      status: ic.status || 'مغلق',
-      created_at: ic.created_at || ic.createdAt || new Date().toISOString()
-    };
-  });
-
-  // Normalize or Auto-generate Section Counters
-  let normCounters: any[] = [];
-  if (rawCounters.length > 0) {
-    normCounters = rawCounters.map((sc: any) => ({
-      section_name: sc.section_name || sc.sectionName || 'pumps',
-      last_number: typeof sc.last_number === 'number' ? sc.last_number : (typeof sc.lastNumber === 'number' ? sc.lastNumber : 0),
-      updated_at: sc.updated_at || sc.updatedAt || new Date().toISOString()
-    }));
-  } else {
-    // Generate counters dynamically based on maximum request numbers in restored data
-    const sections = ['pumps', 'tanks', 'facilities', 'inspections', 'incidents'];
-    normCounters = sections.map(sec => {
-      let maxNum = 0;
-      if (sec === 'pumps' || sec === 'tanks' || sec === 'facilities') {
-        const secReqs = normMaint.filter((r: any) => (r.section || 'pumps') === sec);
-        secReqs.forEach((r: any) => {
-          const num = parseInt(r.request_number, 10);
-          if (!isNaN(num) && num > maxNum) maxNum = num;
-        });
-      } else if (sec === 'inspections') {
-        normInsp.forEach((i: any) => {
-          const num = parseInt(i.inspection_number, 10);
-          if (!isNaN(num) && num > maxNum) maxNum = num;
-        });
-      } else if (sec === 'incidents') {
-        normInc.forEach((ic: any) => {
-          const num = parseInt(ic.incident_number, 10);
-          if (!isNaN(num) && num > maxNum) maxNum = num;
-        });
-      }
-      return {
-        section_name: sec,
-        last_number: maxNum,
-        updated_at: new Date().toISOString()
-      };
-    });
   }
-
-  const tables = {
-    stations: normStations,
-    maintenance_requests: normMaint,
-    internal_inspections: normInsp,
-    incident_records: normInc,
-    section_counters: normCounters,
-    profiles: rawProfiles,
-    audit_logs: rawAudit
-  };
-
-  const counts = {
-    stations: normStations.length,
-    maintenance_requests: normMaint.length,
-    internal_inspections: normInsp.length,
-    incident_records: normInc.length,
-    section_counters: normCounters.length,
-    profiles: rawProfiles.length,
-    audit_logs: rawAudit.length
-  };
-
-  return {
-    isValid: true,
-    filename: data.filename || 'local_backup.json',
-    version: data.backupVersion || data.version || 2,
-    createdAt: data.createdAt || data.created_at || new Date().toISOString(),
-    tables,
-    recordCounts: counts,
-    rawSnapshot: data
-  };
 }
 
 /**
- * Creates a manual, automatic, or safety backup in Supabase
+ * Ensures stations list always includes the 10 official founding stations if missing in DB
  */
-export async function createCloudBackup(
-  backupType: 'manual' | 'automatic' | 'safety' = 'manual',
-  notes?: string
-): Promise<{ success: boolean; backup?: CloudBackupItem; error?: string }> {
+export function mergeOfficialStations(dbStations: Station[]): Station[] {
+  if (!dbStations) return [];
+  return dbStations;
+}
+
+/**
+ * Direct, atomic client-side cloud database renumbering procedure.
+ * Updates all records directly in Supabase tables (`maintenance_requests`, `internal_inspections`, `incident_records`)
+ * starting from 1 for each section (Pumps: 1..N, Tanks: 1..M, Facilities: 1..K, Inspections: 1..InsN, Incidents: 1..IncN).
+ * Updates `section_counters` with exact section counts.
+ */
+export async function migrateAndRenumberCloudRecordsDirectly(): Promise<{ success: boolean; error?: string }> {
   if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-
-    const [profilesRes, stationsRes, countersRes, maintRes, inspRes, incRes, auditRes] = await Promise.all([
-      supabase.from('profiles').select('*'),
-      supabase.from('stations').select('*'),
-      supabase.from('section_counters').select('*'),
+    const [maintRes, insRes, incRes] = await Promise.all([
       supabase.from('maintenance_requests').select('*'),
       supabase.from('internal_inspections').select('*'),
-      supabase.from('incident_records').select('*'),
-      supabase.from('audit_logs').select('*')
+      supabase.from('incident_records').select('*')
     ]);
 
-    const stationsData = stationsRes.data || [];
+    if (maintRes.error) throw new Error(maintRes.error.message);
+    if (insRes.error) throw new Error(insRes.error.message);
+    if (incRes.error) throw new Error(incRes.error.message);
 
-    const recordCounts = {
-      profiles: profilesRes.data?.length || 0,
-      stations: stationsData.length,
-      section_counters: countersRes.data?.length || 0,
-      maintenance_requests: maintRes.data?.length || 0,
-      internal_inspections: inspRes.data?.length || 0,
-      incident_records: incRes.data?.length || 0,
-      audit_logs: auditRes.data?.length || 0
+    const maintRows = maintRes.data || [];
+    const insRows = insRes.data || [];
+    const incRows = incRes.data || [];
+
+    const sortFn = (a: any, b: any) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      const createdA = a.created_at || '';
+      const createdB = b.created_at || '';
+      if (createdA !== createdB) return createdA.localeCompare(createdB);
+      return (a.id || '').localeCompare(b.id || '');
     };
 
-    const now = new Date();
-    const dateStr = now.toISOString().replace(/[:.]/g, '-');
-    let prefix = 'ManualCloudBackup';
-    if (backupType === 'automatic') prefix = 'AutoCloudBackup';
-    if (backupType === 'safety') prefix = 'SafetyCloudBackup';
+    const client = supabase;
+    if (!client) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
-    const filename = `${prefix}_${dateStr}.json`;
-
-    const snapshotData = {
-      backupVersion: 2,
-      architecture: 'supabase_cloud_only',
-      createdAt: now.toISOString(),
-      backupType,
-      filename,
-      recordCounts,
-      tables: {
-        profiles: profilesRes.data || [],
-        stations: stationsData,
-        section_counters: countersRes.data || [],
-        maintenance_requests: maintRes.data || [],
-        internal_inspections: inspRes.data || [],
-        incident_records: incRes.data || [],
-        audit_logs: auditRes.data || []
+    const batchUpdate = async <T>(items: T[], fn: (item: T, idx: number) => Promise<any>) => {
+      const BATCH_SIZE = 25;
+      for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        const chunk = items.slice(i, i + BATCH_SIZE);
+        await Promise.all(chunk.map((item, idx) => fn(item, i + idx)));
       }
     };
 
-    const serialized = JSON.stringify(snapshotData);
-    const sizeBytes = new TextEncoder().encode(serialized).length;
+    const sections = ['pumps', 'tanks', 'facilities'];
+    const sectionCounts: Record<string, number> = { pumps: 0, tanks: 0, facilities: 0, inspections: 0, incidents: 0 };
 
-    const { data: insertedBackup, error: insertError } = await supabase
-      .from('cloud_backups')
-      .insert({
-        filename,
-        backup_type: backupType,
-        status: 'successful',
-        size_bytes: sizeBytes,
-        created_by: session?.user?.id || null,
-        created_by_name: 'مدير النظام السحابي',
-        record_counts: recordCounts,
-        snapshot_data: snapshotData as any,
-        notes
-      })
-      .select()
-      .single();
+    // A. Maintenance Requests per section
+    for (const sec of sections) {
+      const secRows = maintRows.filter(r => (r.section || 'pumps') === sec).sort(sortFn);
+      sectionCounts[sec] = secRows.length;
 
-    if (insertError) {
-      if (insertError.code === '42501' || insertError.message?.includes('row-level security')) {
-        return { success: false, error: 'عفواً، هذه العملية مقتصرة فقط على مدراء النظام المفعّلين.' };
-      }
-      return { success: false, error: sanitizeBackupError(insertError.message, 'createCloudBackup') };
+      // Pass 1: Assign temporary request numbers
+      await batchUpdate(secRows, async (r) => {
+        if (r.request_number && !r.request_number.startsWith('TEMP_')) {
+          await client.from('maintenance_requests').update({ request_number: `TEMP_${r.id}` }).eq('id', r.id);
+        }
+      });
+
+      // Pass 2: Assign clean sequential numbers 1..N
+      await batchUpdate(secRows, async (r, idx) => {
+        await client.from('maintenance_requests').update({ request_number: (idx + 1).toString() }).eq('id', r.id);
+      });
     }
 
-    return {
-      success: true,
-      backup: {
-        id: insertedBackup.id,
-        filename: insertedBackup.filename,
-        backup_type: insertedBackup.backup_type,
-        status: insertedBackup.status,
-        size_bytes: insertedBackup.size_bytes,
-        created_by: insertedBackup.created_by || undefined,
-        created_by_name: insertedBackup.created_by_name,
-        record_counts: (insertedBackup.record_counts as any) || {},
-        notes: insertedBackup.notes || undefined,
-        created_at: insertedBackup.created_at,
-        snapshot_data: insertedBackup.snapshot_data
+    // B. Internal Inspections
+    const sortedIns = [...insRows].sort(sortFn);
+    sectionCounts['inspections'] = sortedIns.length;
+
+    await batchUpdate(sortedIns, async (iRow) => {
+      if (iRow.inspection_number && !iRow.inspection_number.startsWith('TEMP_')) {
+        await client.from('internal_inspections').update({ inspection_number: `TEMP_${iRow.id}` }).eq('id', iRow.id);
       }
-    };
+    });
+    await batchUpdate(sortedIns, async (iRow, idx) => {
+      await client.from('internal_inspections').update({ inspection_number: (idx + 1).toString() }).eq('id', iRow.id);
+    });
+
+    // C. Incident Records
+    const sortedInc = [...incRows].sort(sortFn);
+    sectionCounts['incidents'] = sortedInc.length;
+
+    await batchUpdate(sortedInc, async (incRow) => {
+      if (incRow.incident_number && !incRow.incident_number.startsWith('TEMP_')) {
+        await client.from('incident_records').update({ incident_number: `TEMP_${incRow.id}` }).eq('id', incRow.id);
+      }
+    });
+    await batchUpdate(sortedInc, async (incRow, idx) => {
+      await client.from('incident_records').update({ incident_number: (idx + 1).toString() }).eq('id', incRow.id);
+    });
+
+    // D. Synchronize section_counters table in Supabase
+    const counterUpserts = Object.entries(sectionCounts).map(([section_name, last_number]) => ({
+      section_name,
+      last_number,
+      updated_at: new Date().toISOString()
+    }));
+
+    await client.from('section_counters').upsert(counterUpserts);
+
+    return { success: true };
   } catch (err: any) {
-    return {
-      success: false,
-      error: sanitizeBackupError(err?.message, 'createCloudBackup')
-    };
+    console.error('[DIRECT CLOUD MIGRATION ERROR]:', err);
+    return { success: false, error: err?.message || String(err) };
   }
 }
 
 /**
- * Restores cloud database from a stored backup ID
+ * Triggers full cloud database renumbering procedure sequentially 1..N per section via RPC or Direct Fallback
  */
-export async function restoreCloudBackup(backupId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+export async function renumberAllCloudRecords(): Promise<{ success: boolean; error?: string }> {
   if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+  try {
+    const { error } = await supabase.rpc('renumber_all_section_requests', {});
+    if (error) {
+      const directRes = await migrateAndRenumberCloudRecordsDirectly();
+      if (!directRes.success) {
+        return { success: false, error: directRes.error || error.message };
+      }
+      return { success: true };
+    }
+    return { success: true };
+  } catch (err: any) {
+    const directRes = await migrateAndRenumberCloudRecordsDirectly();
+    if (!directRes.success) {
+      return { success: false, error: directRes.error || err?.message || String(err) };
+    }
+    return { success: true };
+  }
+}
+
+/**
+ * Fetches the next concurrency-safe atomic sequence number from PostgreSQL section_counters via RPC
+ */
+export async function getNextAtomicSequence(section: string): Promise<string> {
+  if (!supabase) {
+    throw new Error('الخدمة غير متاحة حاليًا.');
+  }
+
+  const { data, error } = await supabase.rpc('get_next_section_sequence', {
+    p_section: section
+  });
+
+  if (error) {
+    console.error(`[ATOMIC SEQUENCE ERROR] Failed to fetch sequence for section '${section}':`, error.message);
+    throw new Error(`فشل توليد الرقم التسلسلي للقسم (${section}). يرجى المحاولة مرة أخرى.`);
+  }
+
+  if (!data) {
+    throw new Error(`تعذر الحصول على رقم تسلسلي للقسم (${section}).`);
+  }
+
+  return String(data);
+}
+
+/**
+ * High-performance batch sequence allocation function.
+ * Uses get_next_section_sequence_batch RPC for single-roundtrip allocation if available,
+ * or bounded parallel requests as a fallback.
+ */
+export async function getBatchAtomicSequences(section: string, count: number): Promise<string[]> {
+  if (count <= 0) return [];
+  if (!supabase) {
+    throw new Error('الخدمة غير متاحة حاليًا.');
+  }
+
+  // 1. Try single atomic RPC call for entire count
+  try {
+    const { data, error } = await (supabase.rpc as any)('get_next_section_sequence_batch', {
+      p_section: section,
+      p_count: count
+    });
+
+    if (!error && data) {
+      let startSeq: number | null = null;
+      let endSeq: number | null = null;
+
+      if (Array.isArray(data) && data.length > 0) {
+        startSeq = Number(data[0].start_seq);
+        endSeq = Number(data[0].end_seq);
+      } else if (typeof data === 'object' && data !== null) {
+        startSeq = Number((data as any).start_seq);
+        endSeq = Number((data as any).end_seq);
+      }
+
+      if (startSeq !== null && endSeq !== null && !isNaN(startSeq) && !isNaN(endSeq) && endSeq >= startSeq) {
+        const result: string[] = [];
+        for (let num = startSeq; num <= endSeq; num++) {
+          result.push(String(num));
+        }
+        if (result.length === count) {
+          return result;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[BATCH RPC WARN] Falling back to bounded parallel sequence allocation:', err);
+  }
+
+  // 2. Fallback: Bounded parallel requests (max 15 concurrent)
+  const results: string[] = new Array(count);
+  const BATCH_CONCURRENCY = 15;
+
+  for (let i = 0; i < count; i += BATCH_CONCURRENCY) {
+    const end = Math.min(i + BATCH_CONCURRENCY, count);
+    const promises: Promise<{ idx: number; seq: string }>[] = [];
+
+    for (let j = i; j < end; j++) {
+      promises.push(
+        getNextAtomicSequence(section).then(seq => ({ idx: j, seq }))
+      );
+    }
+
+    const chunkResults = await Promise.all(promises);
+    for (const item of chunkResults) {
+      results[item.idx] = item.seq;
+    }
+  }
+
+  return results;
+}
+
+export function sanitizeCloudFieldValue(val: string | null | undefined, fieldType: 'requester' | 'tech' | 'mType' | 'rType'): string {
+  if (!val) {
+    if (fieldType === 'requester') return 'غير مدون';
+    if (fieldType === 'mType') return 'صيانة عامة';
+    if (fieldType === 'rType') return 'طلب صيانة';
+    return '';
+  }
+  const trimmed = String(val).trim();
+  const lower = trimmed.toLowerCase();
+
+  const isBanner =
+    trimmed.length > 100 ||
+    lower.includes('شركة كويك') ||
+    lower.includes('سجل الصيانة') ||
+    lower.includes('جدول اعطال') ||
+    lower.includes('تقرير صيانة') ||
+    lower.includes('بيان اعطال');
+
+  if (isBanner) {
+    if (fieldType === 'requester') return 'غير مدون';
+    if (fieldType === 'tech') return '';
+    if (fieldType === 'mType') return 'صيانة عامة';
+    if (fieldType === 'rType') return 'طلب صيانة';
+  }
+
+  return trimmed;
+}
+
+/**
+ * Fetches the single source of truth application data directly from Supabase Cloud
+ */
+export async function fetchAuthoritativeCloudData(): Promise<{
+  success: boolean;
+  data?: AppData;
+  error?: string;
+}> {
+  if (!isSupabaseConfigured() || !supabase) {
+    return {
+      success: false,
+      error: 'إعدادات الاتصال بالخدمة غير مكتملة بعد.'
+    };
+  }
 
   try {
-    // 1. Fetch target backup record
-    const { data: targetBackup, error: fetchErr } = await supabase
-      .from('cloud_backups')
-      .select('*')
-      .eq('id', backupId)
-      .maybeSingle();
+    const [stationsRes, requestsRes, inspectionsRes, incidentsRes] = await Promise.all([
+      supabase.from('stations').select('*').order('created_at', { ascending: true }),
+      supabase.from('maintenance_requests').select('*').order('created_at', { ascending: false }),
+      supabase.from('internal_inspections').select('*').order('created_at', { ascending: false }),
+      supabase.from('incident_records').select('*').order('created_at', { ascending: false })
+    ]);
 
-    if (fetchErr || !targetBackup || !targetBackup.snapshot_data) {
-      return { success: false, error: 'تعذر العثور على بيانات النسخة الاحتياطية المطلوبة.' };
+    if (stationsRes.error) {
+      console.error('[LOAD STATIONS ERROR]:', stationsRes.error.message);
+      return { success: false, error: 'تعذر تحميل دليل المحطات. يرجى المحاولة مرة أخرى.' };
+    }
+    if (requestsRes.error) {
+      console.error('[LOAD REQUESTS ERROR]:', requestsRes.error.message);
+      return { success: false, error: 'تعذر تحميل طلبات الصيانة. يرجى المحاولة مرة أخرى.' };
+    }
+    if (inspectionsRes.error) {
+      console.error('[LOAD INSPECTIONS ERROR]:', inspectionsRes.error.message);
+      return { success: false, error: 'تعذر تحميل تقارير التفتيش. يرجى المحاولة مرة أخرى.' };
+    }
+    if (incidentsRes.error) {
+      console.error('[LOAD INCIDENTS ERROR]:', incidentsRes.error.message);
+      return { success: false, error: 'تعذر تحميل بلاغات الحوادث. يرجى المحاولة مرة أخرى.' };
     }
 
-    const norm = normalizeSnapshotData(targetBackup.snapshot_data as any);
-    if (!norm.isValid) {
-      return { success: false, error: norm.error };
-    }
+    // Map Stations
+    const rawStations: Station[] = (stationsRes.data || []).map((s: any) => ({
+      id: s.id,
+      code: s.code,
+      name: s.name,
+      region: s.region,
+      city: s.city || '',
+      address: s.address || '',
+      status: (s.status as StationStatus) || 'نشطة',
+      phone: s.phone || '',
+      supervisor: s.supervisor || '',
+      notes: s.notes || '',
+      isDefault: Boolean(s.is_default),
+      createdAt: s.created_at,
+      updatedAt: s.updated_at
+    }));
 
-    const tables = norm.tables;
+    const stationsList = mergeOfficialStations(rawStations);
 
-    // 3. Clear existing table records in FK order
-    const { error: delMaintErr } = await supabase.from('maintenance_requests').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    if (delMaintErr) throw new Error(`فشل تفريغ جدول طلبات الصيانة: ${delMaintErr.message}`);
+    // Map Maintenance Requests with automatic field sanitization & repair
+    const dirtyRecordsToFix: { id: string; requester: string; maintenance_type: string; request_type: string; technician: string }[] = [];
 
-    const { error: delInspErr } = await supabase.from('internal_inspections').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    if (delInspErr) throw new Error(`فشل تفريغ جدول التفتيش: ${delInspErr.message}`);
+    const requestsList: MaintenanceRequest[] = (requestsRes.data || []).map((r: any) => {
+      const cleanRequester = sanitizeCloudFieldValue(r.requester, 'requester');
+      const cleanRequestType = sanitizeCloudFieldValue(r.request_type, 'rType');
+      const cleanMType = sanitizeCloudFieldValue(r.maintenance_type, 'mType');
+      const cleanTech = sanitizeCloudFieldValue(r.technician, 'tech');
 
-    const { error: delIncErr } = await supabase.from('incident_records').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    if (delIncErr) throw new Error(`فشل تفريغ جدول الحوادث: ${delIncErr.message}`);
-
-    const { error: delStErr } = await supabase.from('stations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    if (delStErr) throw new Error(`فشل تفريغ جدول المحطات: ${delStErr.message}`);
-
-    // 4. Restore stations
-    if (tables.stations.length > 0) {
-      const { error: stErr } = await supabase.from('stations').upsert(tables.stations);
-      if (stErr) throw new Error(`فشل إدراج المحطات: ${stErr.message}`);
-    }
-
-    // 5. Restore section_counters
-    if (tables.section_counters.length > 0) {
-      const { error: scErr } = await supabase.from('section_counters').upsert(tables.section_counters);
-      if (scErr) throw new Error(`فشل إدراج عدادات الأقسام: ${scErr.message}`);
-    }
-
-    // 6. Restore maintenance_requests
-    if (tables.maintenance_requests.length > 0) {
-      const BATCH_SIZE = 100;
-      for (let i = 0; i < tables.maintenance_requests.length; i += BATCH_SIZE) {
-        const chunk = tables.maintenance_requests.slice(i, i + BATCH_SIZE);
-        const { error: mErr } = await supabase.from('maintenance_requests').insert(chunk);
-        if (mErr) throw new Error(`فشل إدراج طلبات الصيانة: ${mErr.message}`);
+      if (
+        cleanRequester !== (r.requester || '') ||
+        cleanRequestType !== (r.request_type || '') ||
+        cleanMType !== (r.maintenance_type || '') ||
+        cleanTech !== (r.technician || '')
+      ) {
+        dirtyRecordsToFix.push({
+          id: r.id,
+          requester: cleanRequester,
+          request_type: cleanRequestType,
+          maintenance_type: cleanMType,
+          technician: cleanTech
+        });
       }
+
+      return {
+        id: r.id,
+        requestNumber: r.request_number,
+        section: r.section,
+        date: r.date,
+        stationId: r.station_id || '',
+        stationName: r.station_name,
+        stationCode: r.station_code,
+        requester: cleanRequester,
+        requestType: cleanRequestType,
+        maintenanceType: cleanMType,
+        problemDescription: r.problem_description || '',
+        closingDate: r.closing_date || undefined,
+        technician: cleanTech,
+        actionTaken: r.action_taken || '',
+        completionNotes: r.completion_notes || '',
+        status: r.status as MaintenanceStatus,
+        isStationUnmatched: Boolean(r.is_station_unmatched),
+        originalStationValue: r.original_station_value || '',
+        unmatchedReason: r.unmatched_reason || '',
+        sourceSheet: r.source_sheet || undefined,
+        sourceRow: r.source_row || undefined,
+        createdAt: r.created_at || new Date().toISOString()
+      };
+    });
+
+    // Asynchronously repair dirty records in Supabase
+    if (dirtyRecordsToFix.length > 0 && supabase) {
+      Promise.all(
+        dirtyRecordsToFix.map(fix =>
+          supabase!
+            .from('maintenance_requests')
+            .update({
+              requester: fix.requester,
+              request_type: fix.request_type,
+              maintenance_type: fix.maintenance_type,
+              technician: fix.technician
+            })
+            .eq('id', fix.id)
+        )
+      ).catch(err => console.error('[DATA REPAIR EXCEPTION]:', err));
     }
 
-    // 7. Restore internal_inspections
-    if (tables.internal_inspections.length > 0) {
-      const BATCH_SIZE = 100;
-      for (let i = 0; i < tables.internal_inspections.length; i += BATCH_SIZE) {
-        const chunk = tables.internal_inspections.slice(i, i + BATCH_SIZE);
-        const { error: iErr } = await supabase.from('internal_inspections').insert(chunk);
-        if (iErr) throw new Error(`فشل إدراج سجلات التفتيش: ${iErr.message}`);
-      }
-    }
+    // Map Internal Inspections
+    const inspectionsList: InternalInspection[] = (inspectionsRes.data || []).map((i: any) => ({
+      id: i.id,
+      inspectionNumber: i.inspection_number,
+      date: i.date,
+      stationId: i.station_id || '',
+      stationName: i.station_name,
+      stationCode: i.station_code,
+      inspectionType: i.inspection_type || '',
+      inspectorName: i.inspector_name || '',
+      evaluation: i.evaluation as InspectionEvaluation,
+      notes: i.notes || '',
+      isStationUnmatched: Boolean(i.is_station_unmatched),
+      originalStationValue: i.original_station_value || '',
+      unmatchedReason: i.unmatched_reason || '',
+      sourceSheet: i.source_sheet || undefined,
+      sourceRow: i.source_row || undefined,
+      createdAt: i.created_at || new Date().toISOString()
+    }));
 
-    // 8. Restore incident_records
-    if (tables.incident_records.length > 0) {
-      const BATCH_SIZE = 100;
-      for (let i = 0; i < tables.incident_records.length; i += BATCH_SIZE) {
-        const chunk = tables.incident_records.slice(i, i + BATCH_SIZE);
-        const { error: icErr } = await supabase.from('incident_records').insert(chunk);
-        if (icErr) throw new Error(`فشل إدراج بلاغات الحوادث: ${icErr.message}`);
-      }
-    }
-
-    // 9. Renumber records safely
-    await migrateAndRenumberCloudRecordsDirectly();
+    // Map Incident Records
+    const incidentsList: IncidentRecord[] = (incidentsRes.data || []).map((inc: any) => ({
+      id: inc.id,
+      incidentNumber: inc.incident_number,
+      region: inc.region || '',
+      stationCode: inc.station_code,
+      stationName: inc.station_name,
+      stationId: inc.station_id || '',
+      date: inc.date,
+      time: inc.time || '',
+      incidentType: inc.incident_type || '',
+      causingParty: inc.causing_party || '',
+      vehicleType: inc.vehicle_type || undefined,
+      generalInfo: inc.general_info || '',
+      description: inc.description || '',
+      preventionSuggestions: inc.prevention_suggestions || '',
+      responsiblePartyReport: inc.responsible_party_report || undefined,
+      notes: inc.notes || undefined,
+      reporterNameAndSignature: inc.reporter_name_and_signature || undefined,
+      isStationUnmatched: Boolean(inc.is_station_unmatched),
+      originalStationValue: inc.original_station_value || '',
+      unmatchedReason: inc.unmatched_reason || '',
+      sourceSheet: inc.source_sheet || undefined,
+      sourceRow: inc.source_row || undefined,
+      createdAt: inc.created_at || new Date().toISOString()
+    }));
 
     return {
       success: true,
       data: {
-        message: 'تمت استعادة البيانات بنجاح.',
+        stations: stationsList,
+        maintenanceRequests: requestsList,
+        inspections: inspectionsList,
+        incidents: incidentsList
       }
     };
   } catch (err: any) {
+    console.error('[CLOUD FETCH ERROR] Exception during cloud data load:', err);
     return {
       success: false,
-      error: sanitizeBackupError(err?.message, 'restoreCloudBackup')
+      error: 'حدث خطأ أثناء تحميل البيانات. يرجى التحقق من الاتصال بالخادم والمحاولة مرة أخرى.'
     };
   }
 }
 
-export interface BackupValidationResult {
-  isValid: boolean;
-  error?: string;
-  filename?: string;
-  version?: number | string;
-  createdAt?: string;
-  recordCounts: {
-    maintenance_requests: number;
-    stations: number;
-    section_counters: number;
-    internal_inspections: number;
-    incident_records: number;
-    profiles: number;
-    audit_logs: number;
-  };
-  tables?: any;
-  rawSnapshot?: any;
-}
+// ---------------------------------------------------------------------------
+// MAINTENANCE REQUESTS CLOUD MUTATIONS
+// ---------------------------------------------------------------------------
 
-/**
- * Parses and validates a JSON backup file content before restoration.
- */
-export function parseAndValidateLocalBackupFile(input: string | object): BackupValidationResult {
-  const norm = normalizeSnapshotData(input);
-  return {
-    isValid: norm.isValid,
-    error: norm.error,
-    filename: norm.filename,
-    version: norm.version,
-    createdAt: norm.createdAt,
-    recordCounts: norm.recordCounts,
-    tables: norm.tables,
-    rawSnapshot: norm.isValid ? {
-      ...norm.rawSnapshot,
-      tables: norm.tables
-    } : norm.rawSnapshot
-  };
-}
-
-/**
- * Restores cloud database state directly from a validated local JSON snapshot
- * and verifies restored row counts.
- */
-export function restoreFromLocalBackupSnapshot(snapshotData: any): Promise<{
-  success: boolean;
-  message?: string;
-  verifiedCounts?: {
-    maintenance_requests: number;
-    stations: number;
-    internal_inspections: number;
-    incident_records: number;
-    section_counters: number;
-  };
-  error?: string;
-}> {
-  return (async () => {
-    const norm = normalizeSnapshotData(snapshotData);
-    if (!norm.isValid) {
-      return { success: false, error: norm.error };
-    }
-
-    if (!supabase) {
-      return { success: false, error: DEFAULT_BACKUP_ERROR };
-    }
-
-    try {
-      // 1. Restore without requiring a pre-restore safety backup
-      const tables = norm.tables;
-
-      // 2. Clear existing operational tables in strict FK dependency order
-      const { error: delMaintErr } = await supabase.from('maintenance_requests').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      if (delMaintErr) throw new Error(`فشل تفريغ جدول طلبات الصيانة: ${delMaintErr.message}`);
-
-      const { error: delInspErr } = await supabase.from('internal_inspections').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      if (delInspErr) throw new Error(`فشل تفريغ جدول التفتيش: ${delInspErr.message}`);
-
-      const { error: delIncErr } = await supabase.from('incident_records').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      if (delIncErr) throw new Error(`فشل تفريغ جدول الحوادث: ${delIncErr.message}`);
-
-      const { error: delStErr } = await supabase.from('stations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      if (delStErr) throw new Error(`فشل تفريغ جدول المحطات: ${delStErr.message}`);
-
-      // 3. Restore stations (upsert)
-      if (tables.stations && tables.stations.length > 0) {
-        const { error: stErr } = await supabase.from('stations').upsert(tables.stations);
-        if (stErr) throw new Error(`فشل إدراج المحطات: ${stErr.message}`);
-      }
-
-      // 4. Restore section_counters (upsert)
-      if (tables.section_counters && tables.section_counters.length > 0) {
-        const { error: scErr } = await supabase.from('section_counters').upsert(tables.section_counters);
-        if (scErr) throw new Error(`فشل إدراج عدادات الأقسام: ${scErr.message}`);
-      }
-
-      // 5. Restore maintenance_requests (batch insert, preserved request_type & maintenance_type)
-      if (tables.maintenance_requests && tables.maintenance_requests.length > 0) {
-        const BATCH_SIZE = 100;
-        for (let i = 0; i < tables.maintenance_requests.length; i += BATCH_SIZE) {
-          const chunk = tables.maintenance_requests.slice(i, i + BATCH_SIZE);
-          const { error: mErr } = await supabase.from('maintenance_requests').insert(chunk);
-          if (mErr) throw new Error(`فشل إدراج دفعة طلبات الصيانة (${i}-${i + chunk.length}): ${mErr.message}`);
-        }
-      }
-
-      // 6. Restore internal_inspections (batch insert)
-      if (tables.internal_inspections && tables.internal_inspections.length > 0) {
-        const BATCH_SIZE = 100;
-        for (let i = 0; i < tables.internal_inspections.length; i += BATCH_SIZE) {
-          const chunk = tables.internal_inspections.slice(i, i + BATCH_SIZE);
-          const { error: iErr } = await supabase.from('internal_inspections').insert(chunk);
-          if (iErr) throw new Error(`فشل إدراج دفعة التفتيش: ${iErr.message}`);
-        }
-      }
-
-      // 7. Restore incident_records (batch insert)
-      if (tables.incident_records && tables.incident_records.length > 0) {
-        const BATCH_SIZE = 100;
-        for (let i = 0; i < tables.incident_records.length; i += BATCH_SIZE) {
-          const chunk = tables.incident_records.slice(i, i + BATCH_SIZE);
-          const { error: icErr } = await supabase.from('incident_records').insert(chunk);
-          if (icErr) throw new Error(`فشل إدراج دفعة الحوادث: ${icErr.message}`);
-        }
-      }
-
-      // 8. VERIFY RESTORED ROW COUNTS
-      const [maintRes, inspRes, incRes, stRes, scRes] = await Promise.all([
-        supabase.from('maintenance_requests').select('id', { count: 'exact', head: true }),
-        supabase.from('internal_inspections').select('id', { count: 'exact', head: true }),
-        supabase.from('incident_records').select('id', { count: 'exact', head: true }),
-        supabase.from('stations').select('id', { count: 'exact', head: true }),
-        supabase.from('section_counters').select('section_name', { count: 'exact', head: true })
-      ]);
-
-      if (maintRes.error || maintRes.count === null || maintRes.count === undefined) {
-        throw new Error(`فشل الاستعلام عن عدد طلبات الصيانة أثناء التحقق من الاستعادة: ${maintRes.error?.message || 'استجابة غير صالحة'}`);
-      }
-      if (inspRes.error || inspRes.count === null || inspRes.count === undefined) {
-        throw new Error(`فشل الاستعلام عن عدد سجلات التفتيش أثناء التحقق من الاستعادة: ${inspRes.error?.message || 'استجابة غير صالحة'}`);
-      }
-      if (incRes.error || incRes.count === null || incRes.count === undefined) {
-        throw new Error(`فشل الاستعلام عن عدد بلاغات الحوادث أثناء التحقق من الاستعادة: ${incRes.error?.message || 'استجابة غير صالحة'}`);
-      }
-      if (stRes.error || stRes.count === null || stRes.count === undefined) {
-        throw new Error(`فشل الاستعلام عن عدد المحطات أثناء التحقق من الاستعادة: ${stRes.error?.message || 'استجابة غير صالحة'}`);
-      }
-      if (scRes.error || scRes.count === null || scRes.count === undefined) {
-        throw new Error(`فشل الاستعلام عن عدد عدادات الأقسام أثناء التحقق من الاستعادة: ${scRes.error?.message || 'استجابة غير صالحة'}`);
-      }
-
-      const actualMaint = maintRes.count;
-      const actualInsp = inspRes.count;
-      const actualInc = incRes.count;
-      const actualSt = stRes.count;
-      const actualSc = scRes.count;
-
-      const expectedMaint = tables.maintenance_requests.length;
-      const expectedInsp = tables.internal_inspections.length;
-      const expectedInc = tables.incident_records.length;
-      const expectedSt = tables.stations.length;
-      const expectedSc = tables.section_counters.length;
-
-      if (actualMaint !== expectedMaint) {
-        throw new Error(`تعذر التحقق من اكتمال استعادة طلبات الصيانة: تم إدراج ${actualMaint} من أصل ${expectedMaint} سجل.`);
-      }
-      if (actualInsp !== expectedInsp) {
-        throw new Error(`تعذر التحقق من اكتمال استعادة سجلات التفتيش: تم إدراج ${actualInsp} من أصل ${expectedInsp} سجل.`);
-      }
-      if (actualInc !== expectedInc) {
-        throw new Error(`تعذر التحقق من اكتمال استعادة بلاغات الحوادث: تم إدراج ${actualInc} من أصل ${expectedInc} سجل.`);
-      }
-      if (actualSt < expectedSt) {
-        throw new Error(`تعذر التحقق من اكتمال استعادة المحطات: تم إدراج ${actualSt} من أصل ${expectedSt} محطة.`);
-      }
-      if (actualSc !== expectedSc) {
-        throw new Error(`تعذر التحقق من اكتمال استعادة عدادات الأقسام: تم إدراج ${actualSc} من أصل ${expectedSc} سجل.`);
-      }
-
-      // 9. Renumber cloud records directly
-      await migrateAndRenumberCloudRecordsDirectly();
-
-      return {
-        success: true,
-        message: 'تمت استعادة البيانات من الملف بنجاح والتحقق من مطابقة أعداد السجلات.',
-        verifiedCounts: {
-          maintenance_requests: actualMaint,
-          stations: actualSt,
-          internal_inspections: actualInsp,
-          incident_records: actualInc,
-          section_counters: actualSc
-        }
-      };
-    } catch (err: any) {
-      const errorMsg = err?.message || String(err);
-      return {
-        success: false,
-        error: sanitizeBackupError(errorMsg, 'restoreFromLocalBackupSnapshot')
-      };
-    }
-  })();
-}
-
-/**
- * Lists all cloud backups stored in Supabase
- */
-export async function listCloudBackups(): Promise<{ success: boolean; backups?: CloudBackupItem[]; error?: string }> {
+export async function createCloudMaintenanceRequest(
+  req: MaintenanceRequest
+): Promise<{ success: boolean; data?: MaintenanceRequest; error?: string }> {
   if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
   try {
-    const { data, error } = await supabase
-      .from('cloud_backups')
-      .select('id, filename, backup_type, status, size_bytes, created_by, created_by_name, record_counts, notes, created_at')
-      .order('created_at', { ascending: false });
+    const atomicNum = await getNextAtomicSequence(req.section);
+    const currentUserId = await getCurrentUserId();
 
-    if (error) {
-      if (error.code === '42501' || error.message?.includes('row-level security')) {
-        return { success: false, error: 'عفواً، هذه القائمة مقتصرة على مدراء النظام المفعّلين.' };
-      }
-      return { success: false, error: sanitizeBackupError(error.message, 'listCloudBackups') };
+    const insertPayload: any = {
+      request_number: atomicNum,
+      section: req.section,
+      date: toValidIsoDate(req.date),
+      station_id: isValidUUID(req.stationId) ? req.stationId : null,
+      station_name: req.stationName,
+      station_code: req.stationCode,
+      requester: sanitizeCloudFieldValue(req.requester, 'requester'),
+      request_type: sanitizeCloudFieldValue(req.requestType, 'rType'),
+      maintenance_type: sanitizeCloudFieldValue(req.maintenanceType, 'mType'),
+      problem_description: req.problemDescription,
+      closing_date: toOptionalValidIsoDate(req.closingDate),
+      technician: sanitizeCloudFieldValue(req.technician, 'tech') || null,
+      action_taken: req.actionTaken || null,
+      completion_notes: req.completionNotes || null,
+      status: req.status || 'جديد',
+      is_station_unmatched: Boolean(req.isStationUnmatched),
+      original_station_value: req.originalStationValue || null,
+      unmatched_reason: req.unmatchedReason || null,
+      source_sheet: req.sourceSheet || null,
+      source_row: req.sourceRow || null,
+      created_by: currentUserId
+    };
+
+    if (isValidUUID(req.id)) {
+      insertPayload.id = req.id;
     }
 
-    const backups: CloudBackupItem[] = (data || []).map((b: any) => ({
-      id: b.id,
-      filename: b.filename,
-      backup_type: b.backup_type || 'manual',
-      status: b.status || 'successful',
-      size_bytes: b.size_bytes || 0,
-      created_by: b.created_by,
-      created_by_name: b.created_by_name || 'مدير النظام',
-      record_counts: b.record_counts || {},
-      notes: b.notes,
-      created_at: b.created_at
-    }));
-
-    return { success: true, backups };
-  } catch (err: any) {
-    return { success: false, error: sanitizeBackupError(err?.message, 'listCloudBackups') };
-  }
-}
-
-/**
- * Fetches single cloud backup with full snapshot data
- */
-export async function getCloudBackup(id: string): Promise<{ success: boolean; backup?: CloudBackupItem; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
-
-  try {
     const { data, error } = await supabase
-      .from('cloud_backups')
-      .select('*')
-      .eq('id', id)
+      .from('maintenance_requests')
+      .insert(insertPayload)
+      .select()
       .single();
 
     if (error) {
-      return { success: false, error: sanitizeBackupError(error.message, 'getCloudBackup') };
+      console.error('[CREATE MAINTENANCE ERROR]:', error.message);
+      return { success: false, error: 'فشل حفظ طلب الصيانة.' };
     }
 
-    return {
-      success: true,
-      backup: {
-        id: data.id,
-        filename: data.filename,
-        backup_type: data.backup_type,
-        status: data.status,
-        size_bytes: data.size_bytes,
-        created_by: data.created_by || undefined,
-        created_by_name: data.created_by_name,
-        record_counts: (data.record_counts as any) || {},
-        notes: data.notes || undefined,
-        created_at: data.created_at,
-        snapshot_data: data.snapshot_data
-      }
+    const created: MaintenanceRequest = {
+      id: data.id,
+      requestNumber: data.request_number,
+      section: data.section as any,
+      date: data.date,
+      stationId: data.station_id || '',
+      stationName: data.station_name,
+      stationCode: data.station_code,
+      requester: data.requester,
+      requestType: data.request_type,
+      maintenanceType: data.maintenance_type,
+      problemDescription: data.problem_description,
+      closingDate: data.closing_date || undefined,
+      technician: data.technician || '',
+      actionTaken: data.action_taken || '',
+      completionNotes: data.completion_notes || '',
+      status: data.status as MaintenanceStatus,
+      isStationUnmatched: Boolean(data.is_station_unmatched),
+      originalStationValue: data.original_station_value || '',
+      unmatchedReason: data.unmatched_reason || '',
+      sourceSheet: data.source_sheet || undefined,
+      sourceRow: data.source_row || undefined,
+      createdAt: data.created_at
     };
+
+    return { success: true, data: created };
   } catch (err: any) {
-    return { success: false, error: sanitizeBackupError(err?.message, 'getCloudBackup') };
+    console.error('[CREATE MAINTENANCE EXCEPTION]:', err);
+    return { success: false, error: 'تعذر إضافة طلب الصيانة.' };
   }
 }
 
-/**
- * Deletes a single cloud backup entry from cloud_backups table
- */
-export async function deleteCloudBackup(id: string): Promise<{ success: boolean; message?: string; error?: string }> {
+export async function updateCloudMaintenanceRequest(
+  req: MaintenanceRequest
+): Promise<{ success: boolean; data?: MaintenanceRequest; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+
+  try {
+    const updatePayload: any = {
+      date: toValidIsoDate(req.date),
+      station_id: isValidUUID(req.stationId) ? req.stationId : null,
+      station_name: req.stationName,
+      station_code: req.stationCode,
+      requester: sanitizeCloudFieldValue(req.requester, 'requester'),
+      request_type: sanitizeCloudFieldValue(req.requestType, 'rType'),
+      maintenance_type: sanitizeCloudFieldValue(req.maintenanceType, 'mType'),
+      problem_description: req.problemDescription,
+      closing_date: toOptionalValidIsoDate(req.closingDate),
+      technician: sanitizeCloudFieldValue(req.technician, 'tech') || null,
+      action_taken: req.actionTaken || null,
+      completion_notes: req.completionNotes || null,
+      status: req.status,
+      is_station_unmatched: Boolean(req.isStationUnmatched),
+      original_station_value: req.originalStationValue || null,
+      unmatched_reason: req.unmatchedReason || null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('maintenance_requests')
+      .update(updatePayload)
+      .eq('id', req.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[UPDATE MAINTENANCE ERROR]:', error.message);
+      return { success: false, error: 'فشل تعديل طلب الصيانة.' };
+    }
+
+    const updated: MaintenanceRequest = {
+      id: data.id,
+      requestNumber: data.request_number,
+      section: data.section as any,
+      date: data.date,
+      stationId: data.station_id || '',
+      stationName: data.station_name,
+      stationCode: data.station_code,
+      requester: data.requester,
+      requestType: data.request_type,
+      maintenanceType: data.maintenance_type,
+      problemDescription: data.problem_description,
+      closingDate: data.closing_date || undefined,
+      technician: data.technician || '',
+      actionTaken: data.action_taken || '',
+      completionNotes: data.completion_notes || '',
+      status: data.status as MaintenanceStatus,
+      isStationUnmatched: Boolean(data.is_station_unmatched),
+      originalStationValue: data.original_station_value || '',
+      unmatchedReason: data.unmatched_reason || '',
+      sourceSheet: data.source_sheet || undefined,
+      sourceRow: data.source_row || undefined,
+      createdAt: data.created_at
+    };
+
+    return { success: true, data: updated };
+  } catch (err: any) {
+    console.error('[UPDATE MAINTENANCE EXCEPTION]:', err);
+    return { success: false, error: 'تعذر تعديل طلب الصيانة.' };
+  }
+}
+
+export async function deleteCloudMaintenanceRequest(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
   if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
   try {
     const { error } = await supabase
-      .from('cloud_backups')
+      .from('maintenance_requests')
       .delete()
       .eq('id', id);
 
     if (error) {
-      if (error.code === '42501' || error.message?.includes('row-level security')) {
-        return { success: false, error: 'عفواً، خيار حذف النسخ مقتصر على مدراء النظام المفعّلين.' };
-      }
-      return { success: false, error: sanitizeBackupError(error.message, 'deleteCloudBackup') };
+      console.error('[DELETE MAINTENANCE ERROR]:', error.message);
+      return { success: false, error: 'فشل حذف طلب الصيانة.' };
     }
-
-    return { success: true, message: 'تم حذف النسخة الاحتياطية بنجاح.' };
+    return { success: true };
   } catch (err: any) {
-    return { success: false, error: sanitizeBackupError(err?.message, 'deleteCloudBackup') };
+    console.error('[DELETE MAINTENANCE EXCEPTION]:', err);
+    return { success: false, error: 'تعذر حذف طلب الصيانة.' };
   }
 }
 
-/**
- * Executes a verified Cloud Safety Backup
- */
-export async function executeCloudSafetyBackup(reason = 'نسخة أمان أوتوماتيكية'): Promise<{
-  success: boolean;
-  safetyBackupId?: string;
-  error?: string;
-}> {
-  const res = await createCloudBackup('safety', reason);
-  if (res.success && res.backup?.id) {
+export async function deleteMultipleCloudMaintenanceRequests(
+  ids: string[]
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+  if (!ids.length) return { success: true };
+
+  try {
+    const { error } = await supabase
+      .from('maintenance_requests')
+      .delete()
+      .in('id', ids);
+
+    if (error) {
+      console.error('[BULK DELETE MAINTENANCE ERROR]:', error.message);
+      return { success: false, error: 'فشل حذف طلبات الصيانة المحددة.' };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[BULK DELETE MAINTENANCE EXCEPTION]:', err);
+    return { success: false, error: 'تعذر حذف الطلبات المحددة.' };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// INTERNAL INSPECTIONS CLOUD MUTATIONS
+// ---------------------------------------------------------------------------
+
+export async function createCloudInspection(
+  ins: InternalInspection
+): Promise<{ success: boolean; data?: InternalInspection; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+
+  try {
+    const atomicNum = await getNextAtomicSequence('inspections');
+    const currentUserId = await getCurrentUserId();
+
+    const insertPayload: any = {
+      inspection_number: atomicNum,
+      date: toValidIsoDate(ins.date),
+      station_id: isValidUUID(ins.stationId) ? ins.stationId : null,
+      station_name: ins.stationName,
+      station_code: ins.stationCode,
+      inspection_type: ins.inspectionType,
+      inspector_name: ins.inspectorName,
+      evaluation: ins.evaluation || 'جيد',
+      notes: ins.notes || null,
+      is_station_unmatched: Boolean(ins.isStationUnmatched),
+      original_station_value: ins.originalStationValue || null,
+      unmatched_reason: ins.unmatchedReason || null,
+      source_sheet: ins.sourceSheet || null,
+      source_row: ins.sourceRow || null,
+      created_by: currentUserId
+    };
+
+    if (isValidUUID(ins.id)) {
+      insertPayload.id = ins.id;
+    }
+
+    const { data, error } = await supabase
+      .from('internal_inspections')
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[CREATE INSPECTION ERROR]:', error.message);
+      return { success: false, error: 'فشل حفظ تقرير التفتيش.' };
+    }
+
+    const created: InternalInspection = {
+      id: data.id,
+      inspectionNumber: data.inspection_number,
+      date: data.date,
+      stationId: data.station_id || '',
+      stationName: data.station_name,
+      stationCode: data.station_code,
+      inspectionType: data.inspection_type,
+      inspectorName: data.inspector_name,
+      evaluation: data.evaluation as InspectionEvaluation,
+      notes: data.notes || '',
+      isStationUnmatched: Boolean(data.is_station_unmatched),
+      originalStationValue: data.original_station_value || '',
+      unmatchedReason: data.unmatched_reason || '',
+      sourceSheet: data.source_sheet || undefined,
+      sourceRow: data.source_row || undefined,
+      createdAt: data.created_at
+    };
+
+    return { success: true, data: created };
+  } catch (err: any) {
+    console.error('[CREATE INSPECTION EXCEPTION]:', err);
+    return { success: false, error: 'تعذر إضافة تقرير التفتيش.' };
+  }
+}
+
+export async function updateCloudInspection(
+  ins: InternalInspection
+): Promise<{ success: boolean; data?: InternalInspection; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+
+  try {
+    const updatePayload: any = {
+      date: toValidIsoDate(ins.date),
+      station_id: isValidUUID(ins.stationId) ? ins.stationId : null,
+      station_name: ins.stationName,
+      station_code: ins.stationCode,
+      inspection_type: ins.inspectionType,
+      inspector_name: ins.inspectorName,
+      evaluation: ins.evaluation,
+      notes: ins.notes || null,
+      is_station_unmatched: Boolean(ins.isStationUnmatched),
+      original_station_value: ins.originalStationValue || null,
+      unmatched_reason: ins.unmatchedReason || null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('internal_inspections')
+      .update(updatePayload)
+      .eq('id', ins.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[UPDATE INSPECTION ERROR]:', error.message);
+      return { success: false, error: 'فشل تعديل تقرير التفتيش.' };
+    }
+
+    const updated: InternalInspection = {
+      id: data.id,
+      inspectionNumber: data.inspection_number,
+      date: data.date,
+      stationId: data.station_id || '',
+      stationName: data.station_name,
+      stationCode: data.station_code,
+      inspectionType: data.inspection_type,
+      inspectorName: data.inspector_name,
+      evaluation: data.evaluation as InspectionEvaluation,
+      notes: data.notes || '',
+      isStationUnmatched: Boolean(data.is_station_unmatched),
+      originalStationValue: data.original_station_value || '',
+      unmatchedReason: data.unmatched_reason || '',
+      sourceSheet: data.source_sheet || undefined,
+      sourceRow: data.source_row || undefined,
+      createdAt: data.created_at
+    };
+
+    return { success: true, data: updated };
+  } catch (err: any) {
+    console.error('[UPDATE INSPECTION EXCEPTION]:', err);
+    return { success: false, error: 'تعذر تعديل تقرير التفتيش.' };
+  }
+}
+
+export async function deleteCloudInspection(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+
+  try {
+    const { error } = await supabase
+      .from('internal_inspections')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('[DELETE INSPECTION ERROR]:', error.message);
+      return { success: false, error: 'فشل حذف تقرير التفتيش.' };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[DELETE INSPECTION EXCEPTION]:', err);
+    return { success: false, error: 'تعذر حذف تقرير التفتيش.' };
+  }
+}
+
+export async function deleteMultipleCloudInspections(
+  ids: string[]
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+  if (!ids.length) return { success: true };
+
+  try {
+    const { error } = await supabase
+      .from('internal_inspections')
+      .delete()
+      .in('id', ids);
+
+    if (error) {
+      console.error('[BULK DELETE INSPECTION ERROR]:', error.message);
+      return { success: false, error: 'فشل حذف سجلات التفتيش المحددة.' };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[BULK DELETE INSPECTION EXCEPTION]:', err);
+    return { success: false, error: 'تعذر حذف سجلات التفتيش المحددة.' };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// INCIDENT RECORDS CLOUD MUTATIONS
+// ---------------------------------------------------------------------------
+
+export async function createCloudIncident(
+  inc: IncidentRecord
+): Promise<{ success: boolean; data?: IncidentRecord; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+
+  try {
+    const atomicNum = await getNextAtomicSequence('incidents');
+    const currentUserId = await getCurrentUserId();
+
+    const insertPayload: any = {
+      incident_number: atomicNum,
+      region: inc.region,
+      station_id: isValidUUID(inc.stationId) ? inc.stationId : null,
+      station_name: inc.stationName,
+      station_code: inc.stationCode,
+      date: toValidIsoDate(inc.date),
+      time: inc.time || '12:00',
+      incident_type: inc.incidentType,
+      causing_party: inc.causingParty,
+      vehicle_type: inc.vehicleType || null,
+      general_info: inc.generalInfo || null,
+      description: inc.description,
+      prevention_suggestions: inc.preventionSuggestions || null,
+      responsible_party_report: inc.responsiblePartyReport || null,
+      notes: inc.notes || null,
+      reporter_name_and_signature: inc.reporterNameAndSignature || null,
+      is_station_unmatched: Boolean(inc.isStationUnmatched),
+      original_station_value: inc.originalStationValue || null,
+      unmatched_reason: inc.unmatchedReason || null,
+      source_sheet: inc.sourceSheet || null,
+      source_row: inc.sourceRow || null,
+      created_by: currentUserId
+    };
+
+    if (isValidUUID(inc.id)) {
+      insertPayload.id = inc.id;
+    }
+
+    const { data, error } = await supabase
+      .from('incident_records')
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[CREATE INCIDENT ERROR]:', error.message);
+      return { success: false, error: 'فشل حفظ بلاغ الحادث.' };
+    }
+
+    const created: IncidentRecord = {
+      id: data.id,
+      incidentNumber: data.incident_number,
+      region: data.region,
+      stationCode: data.station_code,
+      stationName: data.station_name,
+      stationId: data.station_id || '',
+      date: data.date,
+      time: data.time || '',
+      incidentType: data.incident_type,
+      causingParty: data.causing_party,
+      vehicleType: data.vehicle_type || undefined,
+      generalInfo: data.general_info || '',
+      description: data.description,
+      preventionSuggestions: data.prevention_suggestions || '',
+      responsiblePartyReport: data.responsible_party_report || undefined,
+      notes: data.notes || undefined,
+      reporterNameAndSignature: data.reporter_name_and_signature || undefined,
+      isStationUnmatched: Boolean(data.is_station_unmatched),
+      originalStationValue: data.original_station_value || '',
+      unmatchedReason: data.unmatched_reason || '',
+      sourceSheet: data.source_sheet || undefined,
+      sourceRow: data.source_row || undefined,
+      createdAt: data.created_at
+    };
+
+    return { success: true, data: created };
+  } catch (err: any) {
+    console.error('[CREATE INCIDENT EXCEPTION]:', err);
+    return { success: false, error: 'تعذر إضافة بلاغ الحادث.' };
+  }
+}
+
+export async function updateCloudIncident(
+  inc: IncidentRecord
+): Promise<{ success: boolean; data?: IncidentRecord; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+
+  try {
+    const updatePayload: any = {
+      region: inc.region,
+      station_id: isValidUUID(inc.stationId) ? inc.stationId : null,
+      station_name: inc.stationName,
+      station_code: inc.stationCode,
+      date: toValidIsoDate(inc.date),
+      time: inc.time || '12:00',
+      incident_type: inc.incidentType,
+      causing_party: inc.causingParty,
+      vehicle_type: inc.vehicleType || null,
+      general_info: inc.generalInfo || null,
+      description: inc.description,
+      prevention_suggestions: inc.preventionSuggestions || null,
+      responsible_party_report: inc.responsiblePartyReport || null,
+      notes: inc.notes || null,
+      reporter_name_and_signature: inc.reporterNameAndSignature || null,
+      is_station_unmatched: Boolean(inc.isStationUnmatched),
+      original_station_value: inc.originalStationValue || null,
+      unmatched_reason: inc.unmatchedReason || null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { data, error } = await supabase
+      .from('incident_records')
+      .update(updatePayload)
+      .eq('id', inc.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[UPDATE INCIDENT ERROR]:', error.message);
+      return { success: false, error: 'فشل تعديل بلاغ الحادث.' };
+    }
+
+    const updated: IncidentRecord = {
+      id: data.id,
+      incidentNumber: data.incident_number,
+      region: data.region,
+      stationCode: data.station_code,
+      stationName: data.station_name,
+      stationId: data.station_id || '',
+      date: data.date,
+      time: data.time || '',
+      incidentType: data.incident_type,
+      causingParty: data.causing_party,
+      vehicleType: data.vehicle_type || undefined,
+      generalInfo: data.general_info || '',
+      description: data.description,
+      preventionSuggestions: data.prevention_suggestions || '',
+      responsiblePartyReport: data.responsible_party_report || undefined,
+      notes: data.notes || undefined,
+      reporterNameAndSignature: data.reporter_name_and_signature || undefined,
+      isStationUnmatched: Boolean(data.is_station_unmatched),
+      originalStationValue: data.original_station_value || '',
+      unmatchedReason: data.unmatched_reason || '',
+      sourceSheet: data.source_sheet || undefined,
+      sourceRow: data.source_row || undefined,
+      createdAt: data.created_at
+    };
+
+    return { success: true, data: updated };
+  } catch (err: any) {
+    console.error('[UPDATE INCIDENT EXCEPTION]:', err);
+    return { success: false, error: 'تعذر تعديل بلاغ الحادث.' };
+  }
+}
+
+export async function deleteCloudIncident(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+
+  try {
+    const { error } = await supabase
+      .from('incident_records')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('[DELETE INCIDENT ERROR]:', error.message);
+      return { success: false, error: 'فشل حذف بلاغ الحادث.' };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[DELETE INCIDENT EXCEPTION]:', err);
+    return { success: false, error: 'تعذر حذف بلاغ الحادث.' };
+  }
+}
+
+export async function deleteMultipleCloudIncidents(
+  ids: string[]
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+  if (!ids.length) return { success: true };
+
+  try {
+    const { error } = await supabase
+      .from('incident_records')
+      .delete()
+      .in('id', ids);
+
+    if (error) {
+      console.error('[BULK DELETE INCIDENT ERROR]:', error.message);
+      return { success: false, error: 'فشل حذف بلاغات الحوادث المحددة.' };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[BULK DELETE INCIDENT EXCEPTION]:', err);
+    return { success: false, error: 'تعذر حذف بلاغات الحوادث المحددة.' };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// STATIONS CLOUD MUTATIONS
+// ---------------------------------------------------------------------------
+
+export async function saveCloudStation(
+  st: Station
+): Promise<{ success: boolean; data?: Station; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+
+  try {
+    const payload: any = {
+      code: st.code.trim(),
+      name: st.name.trim(),
+      region: st.region.trim(),
+      city: st.city?.trim() || null,
+      address: st.address?.trim() || null,
+      status: st.status || 'نشطة',
+      phone: st.phone?.trim() || null,
+      supervisor: st.supervisor?.trim() || null,
+      notes: st.notes?.trim() || null,
+      is_default: Boolean(st.isDefault),
+      updated_at: new Date().toISOString()
+    };
+
+    if (isValidUUID(st.id)) {
+      const { data, error } = await supabase
+        .from('stations')
+        .update(payload)
+        .eq('id', st.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[UPDATE STATION ERROR]:', error.message);
+        return { success: false, error: 'فشل تعديل بيانات المحطة.' };
+      }
+
+      return {
+        success: true,
+        data: {
+          id: data.id,
+          code: data.code,
+          name: data.name,
+          region: data.region,
+          city: data.city || '',
+          address: data.address || '',
+          status: data.status as StationStatus,
+          phone: data.phone || '',
+          supervisor: data.supervisor || '',
+          notes: data.notes || '',
+          isDefault: Boolean(data.is_default),
+          createdAt: data.created_at,
+          updatedAt: data.updated_at
+        }
+      };
+    } else {
+      const { data, error } = await supabase
+        .from('stations')
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[INSERT STATION ERROR]:', error.message);
+        return { success: false, error: 'فشل إضافة المحطة.' };
+      }
+
+      return {
+        success: true,
+        data: {
+          id: data.id,
+          code: data.code,
+          name: data.name,
+          region: data.region,
+          city: data.city || '',
+          address: data.address || '',
+          status: data.status as StationStatus,
+          phone: data.phone || '',
+          supervisor: data.supervisor || '',
+          notes: data.notes || '',
+          isDefault: Boolean(data.is_default),
+          createdAt: data.created_at,
+          updatedAt: data.updated_at
+        }
+      };
+    }
+  } catch (err: any) {
+    console.error('[SAVE STATION EXCEPTION]:', err);
+    return { success: false, error: 'تعذر حفظ بيانات المحطة.' };
+  }
+}
+
+export async function deleteCloudStation(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+
+  try {
+    const { error } = await supabase
+      .from('stations')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('[DELETE STATION ERROR]:', error.message);
+      return { success: false, error: 'فشل حذف المحطة.' };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[DELETE STATION EXCEPTION]:', err);
+    return { success: false, error: 'تعذر حذف المحطة.' };
+  }
+}
+
+export async function toggleCloudStationStatus(
+  id: string,
+  currentStatus: StationStatus
+): Promise<{ success: boolean; newStatus?: StationStatus; error?: string }> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
+
+  const newStatus: StationStatus = currentStatus === 'نشطة' ? 'غير نشطة' : 'نشطة';
+
+  try {
+    const { error } = await supabase
+      .from('stations')
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) {
+      console.error('[TOGGLE STATION STATUS ERROR]:', error.message);
+      return { success: false, error: 'فشل تغيير حالة المحطة.' };
+    }
+    return { success: true, newStatus };
+  } catch (err: any) {
+    console.error('[TOGGLE STATION STATUS EXCEPTION]:', err);
+    return { success: false, error: 'تعذر تغيير حالة المحطة.' };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// EXCEL IMPORT CLOUD PERSISTENCE
+// ---------------------------------------------------------------------------
+
+export async function importExcelRecordsToCloud(
+  reqs: MaintenanceRequest[],
+  ins: InternalInspection[],
+  incs: IncidentRecord[],
+  onProgress?: (progress: { current: number; total: number; message: string }) => void
+): Promise<{ success: boolean; importedCount: number; error?: string }> {
+  if (!supabase) return { success: false, importedCount: 0, error: 'الخدمة غير متاحة حاليًا.' };
+
+  let totalImported = 0;
+  const grandTotal = reqs.length + ins.length + incs.length;
+
+  try {
+    const currentUserId = await getCurrentUserId();
+
+    // 1. Process and Insert Maintenance Requests
+    if (reqs.length > 0) {
+      onProgress?.({
+        current: totalImported,
+        total: grandTotal,
+        message: `جاري تخصيص الأرقام التسلسلية لـ ${reqs.length} طلب صيانة...`
+      });
+
+      // Group requests by section to fetch atomic batch sequences per section
+      const secGroups = new Map<string, MaintenanceRequest[]>();
+      for (const r of reqs) {
+        const rawSec = r.section || (r as any).section;
+        const sec = (rawSec && ['pumps', 'tanks', 'facilities'].includes(rawSec)) ? rawSec : 'facilities';
+        if (!secGroups.has(sec)) secGroups.set(sec, []);
+        secGroups.get(sec)!.push(r);
+      }
+
+      const payloads: any[] = [];
+
+      for (const [sec, items] of secGroups.entries()) {
+        const seqs = await getBatchAtomicSequences(sec, items.length);
+        for (let idx = 0; idx < items.length; idx++) {
+          const r = items[idx];
+          payloads.push({
+            request_number: seqs[idx] || (idx + 1).toString(),
+            section: sec,
+            date: toValidIsoDate(r.date),
+            station_id: isValidUUID(r.stationId || (r as any).station_id) ? (r.stationId || (r as any).station_id) : null,
+            station_name: r.stationName || (r as any).station_name || 'محطة غير محددة',
+            station_code: r.stationCode ?? (r as any).station_code ?? 0,
+            requester: sanitizeCloudFieldValue(r.requester || (r as any).requester, 'requester'),
+            request_type: sanitizeCloudFieldValue(r.requestType || (r as any).request_type, 'rType'),
+            maintenance_type: sanitizeCloudFieldValue(r.maintenanceType || (r as any).maintenance_type, 'mType'),
+            problem_description: r.problemDescription || (r as any).problem_description || '',
+            closing_date: toOptionalValidIsoDate(r.closingDate || (r as any).closing_date),
+            technician: sanitizeCloudFieldValue(r.technician || (r as any).technician, 'tech') || null,
+            action_taken: r.actionTaken || (r as any).action_taken || null,
+            completion_notes: r.completionNotes || (r as any).completion_notes || null,
+            status: r.status || 'جديد',
+            is_station_unmatched: Boolean(r.isStationUnmatched || (r as any).is_station_unmatched),
+            original_station_value: r.originalStationValue || (r as any).original_station_value || null,
+            unmatched_reason: r.unmatchedReason || (r as any).unmatched_reason || null,
+            source_sheet: r.sourceSheet || (r as any).source_sheet || null,
+            source_row: r.sourceRow || (r as any).source_row || null,
+            created_by: currentUserId
+          });
+        }
+      }
+
+      // Insert in chunks of 100 with progress reporting
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < payloads.length; i += CHUNK_SIZE) {
+        const chunk = payloads.slice(i, i + CHUNK_SIZE);
+        const { error } = await supabase.from('maintenance_requests').insert(chunk);
+        if (error) {
+          console.error('[IMPORT MAINT CHUNK ERROR]:', error.message);
+          throw new Error('فشل استيراد دفعة طلبات الصيانة.');
+        }
+        totalImported += chunk.length;
+        onProgress?.({
+          current: totalImported,
+          total: grandTotal,
+          message: `جاري استيراد ${totalImported} من ${grandTotal} سجل...`
+        });
+      }
+    }
+
+    // 2. Process and Insert Internal Inspections
+    if (ins.length > 0) {
+      onProgress?.({
+        current: totalImported,
+        total: grandTotal,
+        message: `جاري تخصيص أرقام التفتيش لـ ${ins.length} تقرير...`
+      });
+
+      const seqs = await getBatchAtomicSequences('inspections', ins.length);
+      const payloads: any[] = [];
+
+      for (let idx = 0; idx < ins.length; idx++) {
+        const i = ins[idx];
+        payloads.push({
+          inspection_number: seqs[idx] || (idx + 1).toString(),
+          date: toValidIsoDate(i.date),
+          station_id: isValidUUID(i.stationId || (i as any).station_id) ? (i.stationId || (i as any).station_id) : null,
+          station_name: i.stationName || (i as any).station_name || 'محطة غير محددة',
+          station_code: i.stationCode ?? (i as any).station_code ?? 0,
+          inspection_type: i.inspectionType || (i as any).inspection_type || 'تفتيش دوري',
+          inspector_name: i.inspectorName || (i as any).inspector_name || 'مفتش كويك',
+          evaluation: i.evaluation || 'جيد',
+          notes: i.notes || null,
+          is_station_unmatched: Boolean(i.isStationUnmatched || (i as any).is_station_unmatched),
+          original_station_value: i.originalStationValue || (i as any).original_station_value || null,
+          unmatched_reason: i.unmatchedReason || (i as any).unmatched_reason || null,
+          source_sheet: i.sourceSheet || (i as any).source_sheet || null,
+          source_row: i.sourceRow || (i as any).source_row || null,
+          created_by: currentUserId
+        });
+      }
+
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < payloads.length; i += CHUNK_SIZE) {
+        const chunk = payloads.slice(i, i + CHUNK_SIZE);
+        const { error } = await supabase.from('internal_inspections').insert(chunk);
+        if (error) {
+          console.error('[IMPORT INSP CHUNK ERROR]:', error.message);
+          throw new Error('فشل استيراد دفعة التفتيش الدوري.');
+        }
+        totalImported += chunk.length;
+        onProgress?.({
+          current: totalImported,
+          total: grandTotal,
+          message: `جاري استيراد ${totalImported} من ${grandTotal} سجل...`
+        });
+      }
+    }
+
+    // 3. Process and Insert Incident Records
+    if (incs.length > 0) {
+      onProgress?.({
+        current: totalImported,
+        total: grandTotal,
+        message: `جاري تخصيص أرقام الحوادث لـ ${incs.length} بلاغ...`
+      });
+
+      const seqs = await getBatchAtomicSequences('incidents', incs.length);
+      const payloads: any[] = [];
+
+      for (let idx = 0; idx < incs.length; idx++) {
+        const inc = incs[idx];
+        payloads.push({
+          incident_number: seqs[idx] || (idx + 1).toString(),
+          region: inc.region || 'عسير',
+          station_id: isValidUUID(inc.stationId) ? inc.stationId : null,
+          station_name: inc.stationName,
+          station_code: inc.stationCode,
+          date: toValidIsoDate(inc.date),
+          time: inc.time || '12:00',
+          incident_type: inc.incidentType || 'حادث تشغيلي',
+          causing_party: inc.causingParty || '',
+          vehicle_type: inc.vehicleType || null,
+          general_info: inc.generalInfo || null,
+          description: inc.description || '',
+          prevention_suggestions: inc.preventionSuggestions || null,
+          responsible_party_report: inc.responsiblePartyReport || null,
+          notes: inc.notes || null,
+          reporter_name_and_signature: inc.reporterNameAndSignature || null,
+          is_station_unmatched: Boolean(inc.isStationUnmatched),
+          original_station_value: inc.originalStationValue || null,
+          unmatched_reason: inc.unmatchedReason || null,
+          source_sheet: inc.sourceSheet || null,
+          source_row: inc.sourceRow || null,
+          created_by: currentUserId
+        });
+      }
+
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < payloads.length; i += CHUNK_SIZE) {
+        const chunk = payloads.slice(i, i + CHUNK_SIZE);
+        const { error } = await supabase.from('incident_records').insert(chunk);
+        if (error) {
+          console.error('[IMPORT INC CHUNK ERROR]:', error.message);
+          throw new Error('فشل استيراد دفعة بلاغات الحوادث.');
+        }
+        totalImported += chunk.length;
+        onProgress?.({
+          current: totalImported,
+          total: grandTotal,
+          message: `جاري استيراد ${totalImported} من ${grandTotal} سجل...`
+        });
+      }
+    }
+
+    // Run authoritative cloud renumbering after bulk import to guarantee contiguous 1..N numbers per section
+    await renumberAllCloudRecords();
+
+    return { success: true, importedCount: totalImported };
+  } catch (err: any) {
+    console.error('[EXCEL IMPORT ERROR]:', err);
+    const hasSafeArabic = typeof err?.message === 'string' && /[\u0600-\u06FF]/.test(err.message) && !/[a-zA-Z]/.test(err.message);
     return {
-      success: true,
-      safetyBackupId: res.backup.id
+      success: false,
+      importedCount: totalImported,
+      error: hasSafeArabic ? err.message : 'حدث خطأ أثناء استيراد البيانات. يرجى المحاولة مرة أخرى.'
     };
   }
-  return {
-    success: false,
-    error: res.error || 'تعذر إنشاء النسخة الاحتياطية.'
-  };
 }
 
+// ---------------------------------------------------------------------------
+// CLEAR ALL RECORDS (CLOUD DELETION)
+// ---------------------------------------------------------------------------
+
 /**
- * Checks and creates automatic cloud backup if needed
+ * Clears transaction records from the cloud database (Maintenance Requests, Inspections, Incidents).
+ * Does not create a mandatory safety backup before deletion.
+ * Preserves the central stations directory and configuration.
  */
-export async function checkAndRunAutomaticCloudBackup(): Promise<{ success: boolean; backup?: CloudBackupItem; error?: string }> {
-  const backupsRes = await listCloudBackups();
-  if (!backupsRes.success) {
-    return { success: false, error: backupsRes.error || DEFAULT_BACKUP_ERROR };
-  }
+export async function clearAllCloudRecords(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
-  const intervalMs = 30 * 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  const latestAutomatic = (backupsRes.backups || [])
-    .filter((backup) => backup.backup_type === 'automatic' && backup.status === 'successful')
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+  try {
+    // 1. Delete records in the existing foreign-key dependency order
+    // Step A: Delete child transactional tables first
+    const [delMaint, delInsp, delInc] = await Promise.all([
+      supabase.from('maintenance_requests').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+      supabase.from('internal_inspections').delete().neq('id', '00000000-0000-0000-0000-000000000000'),
+      supabase.from('incident_records').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    ]);
 
-  if (latestAutomatic) {
-    const lastBackupTime = new Date(latestAutomatic.created_at).getTime();
-    if (Number.isFinite(lastBackupTime) && now - lastBackupTime < intervalMs) {
-      return { success: true, backup: latestAutomatic };
+    if (delMaint.error) {
+      console.error('[CLEAR MAINT ERROR]:', delMaint.error.message);
+      throw new Error('فشل مسح طلبات الصيانة.');
     }
+    if (delInsp.error) {
+      console.error('[CLEAR INSP ERROR]:', delInsp.error.message);
+      throw new Error('فشل مسح تقارير التفتيش.');
+    }
+    if (delInc.error) {
+      console.error('[CLEAR INC ERROR]:', delInc.error.message);
+      throw new Error('فشل مسح بلاغات الحوادث.');
+    }
+
+    // Keep the central stations directory intact.
+
+    // 2. Reset section counters to 0
+    const counterResets = ['pumps', 'tanks', 'facilities', 'inspections', 'incidents'].map(sec => ({
+      section_name: sec,
+      last_number: 0,
+      updated_at: new Date().toISOString()
+    }));
+    await supabase.from('section_counters').upsert(counterResets);
+
+    // 3. Verify post-delete zero counts for transactional records
+    const [maintCheck, inspCheck, incCheck] = await Promise.all([
+      supabase.from('maintenance_requests').select('id', { count: 'exact', head: true }),
+      supabase.from('internal_inspections').select('id', { count: 'exact', head: true }),
+      supabase.from('incident_records').select('id', { count: 'exact', head: true })
+    ]);
+
+    if (maintCheck.error || (maintCheck.count !== null && maintCheck.count > 0)) {
+      throw new Error('تعذر التحقق من تفريغ جدول طلبات الصيانة بالكامل.');
+    }
+    if (inspCheck.error || (inspCheck.count !== null && inspCheck.count > 0)) {
+      throw new Error('تعذر التحقق من تفريغ جدول تقارير التفتيش بالكامل.');
+    }
+    if (incCheck.error || (incCheck.count !== null && incCheck.count > 0)) {
+      throw new Error('تعذر التحقق من تفريغ جدول بلاغات الحوادث بالكامل.');
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('[CLEAR ALL CLOUD ERROR]:', err);
+    const hasSafeArabic = typeof err?.message === 'string' && /[\u0600-\u06FF]/.test(err.message) && !/[a-zA-Z]/.test(err.message);
+    return {
+      success: false,
+      error: hasSafeArabic ? err.message : 'تعذر استكمال مسح السجلات.'
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// REALTIME SUBSCRIPTION
+// ---------------------------------------------------------------------------
+
+/**
+ * Subscribes to Realtime changes across all core tables
+ * Invokes onDataChange callback when another client creates/updates/deletes a record
+ */
+export function subscribeToCloudChanges(onDataChange: () => void): () => void {
+  if (!supabase) {
+    return () => {};
   }
 
-  return createCloudBackup('automatic', 'نسخة أوتوماتيكية دورية كل 30 يومًا');
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const triggerDebouncedChange = () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+    debounceTimer = setTimeout(() => {
+      onDataChange();
+      debounceTimer = null;
+    }, 350);
+  };
+
+  const channelName = `quik_app_realtime_${Math.random().toString(36).substr(2, 6)}`;
+  const channel = supabase.channel(channelName);
+
+  channel
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_requests' }, () => {
+      triggerDebouncedChange();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'internal_inspections' }, () => {
+      triggerDebouncedChange();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'incident_records' }, () => {
+      triggerDebouncedChange();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stations' }, () => {
+      triggerDebouncedChange();
+    })
+    .subscribe();
+
+  return () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    channel.unsubscribe();
+    if (supabase) {
+      supabase.removeChannel(channel);
+    }
+  };
 }
