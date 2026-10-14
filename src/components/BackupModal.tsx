@@ -9,7 +9,6 @@ import {
   Trash2,
   Database,
   FileSpreadsheet,
-  Cloud,
   ShieldCheck,
   Clock,
   RefreshCw,
@@ -173,7 +172,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
     return `${total} سجل`;
   };
 
-  // Handle Manual Cloud Backup Creation
+  // Handle Manual Backup Creation
   const handleCreateManualBackup = async () => {
     setMessage(null);
     setIsActionLoading(true);
@@ -181,10 +180,10 @@ export const BackupModal: React.FC<BackupModalProps> = ({
     setIsActionLoading(false);
 
     if (res.success) {
-      setMessage({ type: 'success', text: 'تم إنشاء النسخة الاحتياطية السحابية بنجاح.' });
+      setMessage({ type: 'success', text: 'تم إنشاء النسخة الاحتياطية بنجاح.' });
       fetchBackupsList();
     } else {
-      setMessage({ type: 'error', text: res.error || 'فشل إنشاء النسخة الاحتياطية السحابية.' });
+      setMessage({ type: 'error', text: res.error || 'تعذر إنشاء النسخة الاحتياطية.' });
     }
   };
 
@@ -219,7 +218,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
     setRestoreConfirmOpen(false);
     setMessage({
       type: 'success',
-      text: 'جاري إنشاء نسخة الأمان الأوتوماتيكية وتأمين البيانات السحابية ثم استعادة النسخة...'
+      text: 'جاري تأمين البيانات واستعادة النسخة الاحتياطية...'
     });
     setIsActionLoading(true);
 
@@ -229,7 +228,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
       if (res.success) {
         setMessage({
           type: 'success',
-          text: `${res.data?.message || 'تمت استعادة قاعدة البيانات السحابية بنجاح.'} (تمت إعادة الترقيم الأوتوماتيكية في قاعدة البيانات وحفظ التغييرات).`
+          text: `${res.data?.message || 'تمت استعادة البيانات بنجاح.'} (تمت إعادة الترقيم الأوتوماتيكية في قاعدة البيانات وحفظ التغييرات).`
         });
         fetchBackupsList();
 
@@ -240,7 +239,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         setMessage({ type: 'error', text: res.error || 'فشلت عملية الاستعادة.' });
       }
     } catch (err: any) {
-      setMessage({ type: 'error', text: err?.message || 'حدث خطأ أثناء تنفيذ عملية الاستعادة السحابية.' });
+      setMessage({ type: 'error', text: err?.message || 'حدث خطأ أثناء استعادة البيانات.' });
     } finally {
       setIsActionLoading(false);
       setSelectedBackupToRestore(null);
@@ -289,7 +288,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
       if (res.success && res.verifiedCounts) {
         setMessage({
           type: 'success',
-          text: `تمت استعادة قاعدة البيانات السحابية بنجاح! تم استعادة ${res.verifiedCounts.maintenance_requests} طلب صيانة و ${res.verifiedCounts.stations} محطة والتحقق أوتوماتيكياً من مطابقة السجلات.`
+          text: `تمت استعادة البيانات بنجاح! تم استعادة ${res.verifiedCounts.maintenance_requests} طلب صيانة و ${res.verifiedCounts.stations} محطة والتحقق أوتوماتيكياً من مطابقة السجلات.`
         });
         fetchBackupsList();
 
@@ -318,7 +317,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
     setIsActionLoading(false);
 
     if (res.success) {
-      setMessage({ type: 'success', text: res.message || 'تم حذف النسخة الاحتياطية السحابية بنجاح.' });
+      setMessage({ type: 'success', text: res.message || 'تم حذف النسخة الاحتياطية بنجاح.' });
       fetchBackupsList();
     } else {
       setMessage({ type: 'error', text: res.error || 'فشل حذف النسخة الاحتياطية.' });
@@ -338,13 +337,13 @@ export const BackupModal: React.FC<BackupModalProps> = ({
       if (res && typeof res === 'object' && res.success === false) {
         setMessage({
           type: 'error',
-          text: res.error || 'فشلت عملية مسح السجلات من قاعدة البيانات السحابية.'
+          text: res.error || 'تعذر مسح السجلات.'
         });
         return;
       }
       setMessage({
         type: 'success',
-        text: 'تم مسح جميع السجلات من قاعدة البيانات السحابية والمحلية بنجاح (مع تأمين نسخة أمان أوتوماتيكية مسبقاً).'
+        text: 'تم مسح جميع السجلات بنجاح بعد إنشاء نسخة أمان تلقائية.'
       });
       fetchBackupsList();
     } catch (err: any) {
@@ -364,16 +363,16 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         <div className="px-5 py-3.5 border-b border-slate-200 bg-white text-slate-900 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-orange-50 text-orange-600 rounded-2xl border border-orange-100 shadow-2xs">
-              <Cloud className="w-5 h-5 stroke-[2.5]" />
+              <Database className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold font-['Cairo'] text-slate-900">
-                  إدارة النسخ الاحتياطي السحابي
+                  إدارة النسخ الاحتياطية
                 </h2>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-bold border border-emerald-200">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  متصل بالسحابة
+                  النظام يعمل
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium">
@@ -454,9 +453,9 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                     {isActionLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin text-white" />
                     ) : (
-                      <Cloud className="w-4 h-4 stroke-[2.5]" />
+                      <Database className="w-4 h-4 stroke-[2.5]" />
                     )}
-                    <span>إنشاء نسخة سحابية جديدة الآن</span>
+                    <span>إنشاء نسخة احتياطية جديدة</span>
                   </button>
                 </div>
               </div>
@@ -510,14 +509,14 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 <button
                   onClick={() => setClearConfirmOpen(true)}
                   className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer mr-auto"
-                  title="مسح كافة سجلات الصيانة والتفتيش والحوادث مع تأمين نسخة سحابية"
+                  title="مسح كافة سجلات الصيانة والتفتيش والحوادث مع تأمين نسخة احتياطية"
                 >
                   <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                   <span>مسح كل البيانات</span>
                 </button>
               </div>
 
-              {/* Cloud Backups Catalog Section */}
+              {/* Backups Catalog Section */}
               <div className="space-y-3">
                 {/* Search & Filters Toolbar */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
@@ -593,7 +592,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                   ) : filteredBackups.length === 0 ? (
                     <div className="p-8 text-center text-slate-500 space-y-1">
                       <p className="text-xs sm:text-sm font-bold">لا توجد نسخ احتياطية متاحة تطابق نتائج البحث والفلترة.</p>
-                      <p className="text-xs text-slate-400">يمكنك إنشاء نسخة سحابية جديدة بالضغط على الزر العلوي.</p>
+                      <p className="text-xs text-slate-400">يمكنك إنشاء نسخة احتياطية جديدة من الزر أعلاه.</p>
                     </div>
                   ) : (
                     <div className="divide-y divide-slate-100">
@@ -640,7 +639,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                                 <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5 font-medium">
                                   <span>{formatDate(item.created_at)}</span>
                                   <span>•</span>
-                                  <span>{item.created_by_name || 'النظام السحابي'}</span>
+                                  <span>{item.created_by_name || 'النظام'}</span>
                                 </div>
                               </div>
                             </div>
@@ -757,7 +756,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0 text-xs">
           <div className="flex items-center gap-2 text-slate-600 font-medium">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            <span>نظام حماية النسخ السحابية أوتوماتيكي ومستقل لجميع البيانات</span>
+            <span>نظام حماية النسخ الاحتياطية والتحقق من سلامة البيانات</span>
           </div>
           <button
             onClick={onClose}
@@ -769,7 +768,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
 
       </div>
 
-      {/* Confirmation Modal - Restore Cloud Backup */}
+      {/* Confirmation Modal - Restore Backup */}
       <ConfirmModal
         isOpen={restoreConfirmOpen}
         title="تأكيد استعادة النسخة الاحتياطية"
@@ -784,7 +783,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
       <ConfirmModal
         isOpen={deleteConfirmOpen}
         title="تأكيد حذف النسخة الاحتياطية"
-        message={`هل أنت متأكد من حذف النسخة الاحتياطية [${selectedBackupToDelete?.filename}] نهائياً من السحابة؟`}
+        message={`هل أنت متأكد من حذف النسخة الاحتياطية [${selectedBackupToDelete?.filename}] نهائياً؟`}
         confirmLabel="حذف النسخة"
         isDanger={true}
         onConfirm={handleConfirmDelete}
@@ -795,7 +794,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
       <ConfirmModal
         isOpen={clearConfirmOpen}
         title="تأكيد الحذف الكلي للسجلات"
-        message="هل أنت متأكد من مسح جميع سجلات الصيانة والتفتيش والحوادث من السحابة والمحلي؟ سيتم إنشاء نسخة أمان سحابية أوتوماتيكية مسبقاً قبل عملية المسح."
+        message="هل أنت متأكد من مسح جميع سجلات الصيانة والتفتيش والحوادث ؟ سيتم إنشاء نسخة أمان تلقائية قبل عملية المسح."
         confirmLabel="مسح الكل مع إنشاء نسخة أمان"
         isDanger={true}
         onConfirm={handleConfirmClearAll}
