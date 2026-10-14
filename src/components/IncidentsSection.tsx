@@ -202,13 +202,13 @@ export const IncidentsSection: React.FC<IncidentsSectionProps> = ({
     try {
       const res = await Promise.resolve(onSaveIncident(updated) as any);
       if (res && typeof res === 'object' && res.success === false) {
-        setFormError(res.error || 'تعذر حفظ بلاغ الحادث في قاعدة البيانات السحابية.');
+        setFormError(res.error || 'تعذر حفظ بلاغ الحادث. يرجى المحاولة مرة أخرى.');
         return;
       }
       setIsModalOpen(false);
       setEditingIncident(null);
     } catch (err: any) {
-      setFormError(err?.message || 'تعذر حفظ بلاغ الحادث في قاعدة البيانات السحابية.');
+      setFormError(err?.message || 'تعذر حفظ بلاغ الحادث. يرجى المحاولة مرة أخرى.');
     }
   };
 
