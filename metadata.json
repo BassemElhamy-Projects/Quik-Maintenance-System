@@ -1,0 +1,6 @@
+{
+  "name": "Quick Fuel Maintenance - نظام إدارة صيانة محطات كويك",
+  "description": "نظام صيانة سحابي متكامل لإدارة وتشغيل محطات الوقود - تسجيل ومتابعة طلبات الصيانة والتفتيش الدوري وسجلات الحوادث لمحطات كويك للوقود.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
