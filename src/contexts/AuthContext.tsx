@@ -302,32 +302,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const reqId = ++authRequestIdRef.current;
 
     try {
-      let targetEmail = getInternalEmailForUsername(cleanUsername);
-
-      // Try looking up stored email from profiles
-      const { data: profMatch } = await supabase
+      // Resolve the stored email first. When a profile has no email, try the
+      // legacy identity used by existing Quik accounts before the newer
+      // internal identity. This avoids a predictable failed Auth request for
+      // accounts that still use @quik.local.
+      const { data: profMatch, error: profileLookupError } = await supabase
         .from('profiles')
         .select('email')
         .ilike('username', cleanUsername)
         .maybeSingle();
 
-      if (profMatch?.email) {
-        targetEmail = profMatch.email;
+      if (profileLookupError) {
+        console.warn('[AUTH] Username profile lookup failed:', profileLookupError.message);
       }
+
+      const hasProfileEmail = Boolean(profMatch?.email);
+      let targetEmail = profMatch?.email || `${cleanUsername}@quik.local`;
 
       let { data, error } = await supabase.auth.signInWithPassword({
         email: targetEmail,
         password
       });
 
-      // Only try the legacy @quik.local identity when the profile did not
-      // provide a canonical email. If profiles already contains an email,
-      // that value is the source of truth and a failed attempt should be
-      // reported instead of silently trying a second identity.
-      if (error && !profMatch?.email && !targetEmail.endsWith('@quik.local')) {
-        const localFallbackEmail = `${cleanUsername}@quik.local`;
+      // Only try an alternate generated identity when profiles has no email.
+      // Never silently switch identities if the profile specifies its email.
+      if (error && !hasProfileEmail) {
+        const alternateEmail = targetEmail.endsWith('@quik.local')
+          ? getInternalEmailForUsername(cleanUsername)
+          : `${cleanUsername}@quik.local`;
+
         const fallbackRes = await supabase.auth.signInWithPassword({
-          email: localFallbackEmail,
+          email: alternateEmail,
           password
         });
 
@@ -335,7 +340,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           data = fallbackRes.data;
           error = null;
         } else if (fallbackRes.error) {
-          // Keep the final authentication error for the user-facing response.
           error = fallbackRes.error;
         }
       }
