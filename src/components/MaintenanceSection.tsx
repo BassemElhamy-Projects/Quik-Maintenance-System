@@ -272,13 +272,13 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
     try {
       const res = await Promise.resolve(onSaveRequest(updated) as any);
       if (res && typeof res === 'object' && res.success === false) {
-        setFormError(res.error || 'تعذر حفظ طلب الصيانة في قاعدة البيانات السحابية.');
+        setFormError(res.error || 'تعذر حفظ طلب الصيانة. يرجى المحاولة مرة أخرى.');
         return;
       }
       setIsModalOpen(false);
       setEditingRequest(null);
     } catch (err: any) {
-      setFormError(err?.message || 'تعذر حفظ طلب الصيانة في قاعدة البيانات السحابية.');
+      setFormError(err?.message || 'تعذر حفظ طلب الصيانة. يرجى المحاولة مرة أخرى.');
     }
   };
 
