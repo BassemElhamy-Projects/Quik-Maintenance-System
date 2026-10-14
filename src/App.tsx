@@ -72,6 +72,8 @@ function getValidInitialSection(): SectionType | 'home' {
 }
 
 const QuikAppInner = React.memo(function QuikAppInner() {
+  const { role } = useAuth();
+
   // Main persistent state - Initial state is empty until authoritative cloud load succeeds
   const [appData, setAppData] = useState<AppData>(EMPTY_APP_DATA);
   const [isDatabaseInitialized, setIsDatabaseInitialized] = useState<boolean>(false);
@@ -165,16 +167,19 @@ const QuikAppInner = React.memo(function QuikAppInner() {
 
   // Check for the scheduled monthly automatic cloud backup after database initialization
   useEffect(() => {
-    if (!isDatabaseInitialized) return;
+    // Automatic backups are restricted to active administrators.
+    if (!isDatabaseInitialized || role !== 'admin') return;
+
     async function runDailyBackup() {
       try {
         await checkAndRunAutomaticCloudBackup();
       } catch (err) {
-        console.warn('[CLOUD BACKUP] Automatic Daily Cloud Backup check notice:', err);
+        console.warn('[CLOUD BACKUP] Automatic backup check notice:', err);
       }
     }
+
     runDailyBackup();
-  }, [isDatabaseInitialized]);
+  }, [isDatabaseInitialized, role]);
 
   // Retry loading database from cloud if failed
   const handleRetryDatabaseLoad = async () => {
@@ -626,7 +631,9 @@ const QuikAppInner = React.memo(function QuikAppInner() {
         return { success: false, error: errMsg };
       }
 
-      if (totalToImport >= 5) {
+      // Only administrators create safety backups. Regular users can still
+      // import records without triggering a backup attempt that RLS will reject.
+      if (totalToImport >= 5 && role === 'admin') {
         onProgress?.({
           current: 0,
           total: totalToImport,
