@@ -142,18 +142,18 @@ export const LoginScreen: React.FC = () => {
   const displayError = localError || authError;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 sm:px-6 lg:px-8 dir-rtl font-['Cairo',sans-serif] selection:bg-orange-500 selection:text-white relative overflow-hidden">
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 py-6 sm:px-6 dir-rtl font-['Cairo',sans-serif] selection:bg-orange-500 selection:text-white relative overflow-hidden">
 
-      {/* Background */}
+      {/* Background Accents */}
       <div className="absolute -top-40 -right-40 w-96 h-96 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-orange-600/5 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="w-full max-w-md space-y-6 relative z-10">
+      <div className="w-full max-w-sm space-y-4 relative z-10">
 
         {/* Brand Header */}
-        <div className="text-center space-y-2.5">
+        <div className="text-center space-y-1.5">
 
-          {/* Quik Logo */}
+          {/* Company Logo */}
           <div className="flex justify-center items-center mb-1">
             <img
               src="/quik-logo.png"
@@ -162,34 +162,34 @@ export const LoginScreen: React.FC = () => {
             />
           </div>
 
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 font-['Cairo']">
+          <div className="space-y-0.5">
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 font-['Cairo']">
               كويك لمحطات الوقود
             </h1>
 
-            <p className="text-orange-600 font-bold text-xs sm:text-sm tracking-wide mt-0.5">
+            <p className="text-orange-600 font-bold text-xs tracking-wide">
               نظام إدارة الصيانة والتفتيش
             </p>
           </div>
 
           {isFirstAdminSetup ? (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-100/80 border border-orange-200 text-orange-800 text-xs font-bold">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-100/80 border border-orange-200 text-orange-800 text-[11px] font-bold">
               <UserPlus className="w-3.5 h-3.5 text-orange-600" />
               <span>تهيئة مدير النظام الأول (Setup Mode)</span>
             </div>
           ) : (
-            <p className="text-slate-500 text-xs max-w-xs mx-auto font-medium">
+            <p className="text-slate-500 text-[11px] max-w-xs mx-auto font-medium">
               سجل دخولك باسم المستخدم وكلمة المرور للوصول إلى النظام
             </p>
           )}
         </div>
 
         {/* Login Card */}
-        <div className="bg-white border border-slate-200/90 p-6 sm:p-8 rounded-3xl shadow-xl shadow-slate-200/60 space-y-5 text-right">
+        <div className="bg-white border border-slate-200/90 p-5 sm:p-6 rounded-3xl shadow-xl shadow-slate-200/60 space-y-4 text-right">
 
-          {/* Error */}
+          {/* Error Message */}
           {displayError && (
-            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-start gap-2.5 animate-in fade-in duration-200">
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[11px] font-bold flex items-start gap-2 animate-in fade-in duration-200">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               <span className="leading-relaxed">{displayError}</span>
             </div>
@@ -197,7 +197,7 @@ export const LoginScreen: React.FC = () => {
 
           {/* Connection Warning */}
           {!isSupabaseReady && (
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-start gap-2.5">
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-start gap-2">
               <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span className="leading-relaxed">
                 تعذر تهيئة الاتصال بالخدمة السحابية. يرجى التواصل مع مسؤول النظام.
@@ -206,16 +206,16 @@ export const LoginScreen: React.FC = () => {
           )}
 
           {isCheckingSetup ? (
-            <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-500 text-xs font-medium">
+            <div className="py-10 flex flex-col items-center justify-center gap-3 text-slate-500 text-xs font-medium">
               <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
               <span>جاري التحقق من إعدادات النظام...</span>
             </div>
           ) : isFirstAdminSetup ? (
 
-            /* First Admin Setup */
-            <form onSubmit={handleSubmitFirstAdmin} className="space-y-4">
+            /* First Admin Setup Form */
+            <form onSubmit={handleSubmitFirstAdmin} className="space-y-3">
 
-              <div className="p-3.5 rounded-2xl bg-orange-50 border border-orange-200/80 text-slate-700 text-xs leading-relaxed">
+              <div className="p-3 rounded-xl bg-orange-50 border border-orange-200/80 text-slate-700 text-[11px] leading-relaxed">
                 <p className="font-bold text-orange-800 mb-1">
                   ترحيب بالنظام الجديد:
                 </p>
@@ -223,12 +223,12 @@ export const LoginScreen: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-700">
+                <label className="block text-[11px] font-bold text-slate-700">
                   اسم مستخدم المدير (Admin Username)
                 </label>
 
                 <div className="relative">
-                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
                     <User className="w-4 h-4" />
                   </div>
 
@@ -245,13 +245,13 @@ export const LoginScreen: React.FC = () => {
                       }
                     }}
                     placeholder="مثال: bassem_admin"
-                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-2xl py-2.5 pr-10 pl-4 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
+                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl py-2.5 pr-9 pl-3 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-700">
+                <label className="block text-[11px] font-bold text-slate-700">
                   الاسم الكامل
                 </label>
 
@@ -261,17 +261,17 @@ export const LoginScreen: React.FC = () => {
                   value={adminFullName}
                   onChange={(e) => setAdminFullName(e.target.value)}
                   placeholder="الاسم الكامل لمدير النظام"
-                  className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-2xl py-2.5 px-4 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-right"
+                  className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl py-2.5 px-3 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-right"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-700">
+                <label className="block text-[11px] font-bold text-slate-700">
                   رقم الهاتف (اختياري)
                 </label>
 
                 <div className="relative">
-                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
                     <Phone className="w-4 h-4" />
                   </div>
 
@@ -281,18 +281,18 @@ export const LoginScreen: React.FC = () => {
                     value={adminPhone}
                     onChange={(e) => setAdminPhone(e.target.value)}
                     placeholder="05xxxxxxxx"
-                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-2xl py-2.5 pr-10 pl-4 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
+                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl py-2.5 pr-9 pl-3 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-700">
-                  كلمة المرور (اختر كلمة المرور)
+                <label className="block text-[11px] font-bold text-slate-700">
+                  كلمة المرور
                 </label>
 
                 <div className="relative">
-                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
                     <Lock className="w-4 h-4" />
                   </div>
 
@@ -309,13 +309,13 @@ export const LoginScreen: React.FC = () => {
                       }
                     }}
                     placeholder="••••••••"
-                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-2xl py-2.5 pr-10 pl-10 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
+                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl py-2.5 pr-9 pl-9 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
                   />
 
                   <button
                     type="button"
                     onClick={() => setShowAdminPassword(!showAdminPassword)}
-                    className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                     title={showAdminPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
                   >
                     {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -324,12 +324,12 @@ export const LoginScreen: React.FC = () => {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-700">
+                <label className="block text-[11px] font-bold text-slate-700">
                   تأكيد كلمة المرور
                 </label>
 
                 <div className="relative">
-                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
                     <Lock className="w-4 h-4" />
                   </div>
 
@@ -340,7 +340,7 @@ export const LoginScreen: React.FC = () => {
                     value={adminConfirmPassword}
                     onChange={(e) => setAdminConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-2xl py-2.5 pr-10 pl-4 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
+                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl py-2.5 pr-9 pl-3 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
                   />
                 </div>
               </div>
@@ -348,7 +348,7 @@ export const LoginScreen: React.FC = () => {
               <button
                 type="submit"
                 disabled={submitting || authIsLoading}
-                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black text-xs tracking-wide shadow-lg shadow-orange-500/20 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer mt-3"
+                className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black text-xs shadow-md shadow-orange-500/20 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer mt-2"
               >
                 {submitting || authIsLoading ? (
                   <>
@@ -365,16 +365,16 @@ export const LoginScreen: React.FC = () => {
             </form>
           ) : (
 
-            /* Standard Login */
-            <form onSubmit={handleSubmitLogin} className="space-y-4">
+            /* Standard Login Form */
+            <form onSubmit={handleSubmitLogin} className="space-y-3.5">
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-700">
                   اسم المستخدم
                 </label>
 
                 <div className="relative">
-                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
                     <User className="w-4 h-4" />
                   </div>
 
@@ -392,18 +392,18 @@ export const LoginScreen: React.FC = () => {
                       }
                     }}
                     placeholder="اسم المستخدم (Username)"
-                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-2xl py-3 pr-10 pl-4 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
+                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl py-2.5 pr-9 pl-3 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
                   />
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700">
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-700">
                   كلمة المرور
                 </label>
 
                 <div className="relative">
-                  <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-slate-400">
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
                     <Lock className="w-4 h-4" />
                   </div>
 
@@ -420,13 +420,13 @@ export const LoginScreen: React.FC = () => {
                       }
                     }}
                     placeholder="••••••••"
-                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-2xl py-3 pr-10 pl-10 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
+                    className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl py-2.5 pr-9 pl-9 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all text-left font-mono"
                   />
 
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                     title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -437,7 +437,7 @@ export const LoginScreen: React.FC = () => {
               <button
                 type="submit"
                 disabled={submitting || authIsLoading}
-                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black text-xs tracking-wide shadow-lg shadow-orange-500/20 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer mt-2"
+                className="w-full py-3 px-3 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black text-xs shadow-md shadow-orange-500/20 active:scale-[0.99] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer mt-1"
               >
                 {submitting || authIsLoading ? (
                   <>
@@ -452,9 +452,9 @@ export const LoginScreen: React.FC = () => {
           )}
 
           {/* Security Notice */}
-          <div className="pt-3 border-t border-slate-100 text-center">
-            <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1.5 font-medium">
-              <ShieldCheck className="w-3.5 h-3.5 text-orange-500" />
+          <div className="pt-2.5 border-t border-slate-100 text-center">
+            <p className="text-[10px] text-slate-500 flex items-center justify-center gap-1.5 font-medium">
+              <ShieldCheck className="w-3.5 h-3.5 text-orange-500 shrink-0" />
               <span>
                 نظام محمي ومشفر — يتم إنشاء الحسابات عبر مدير النظام فقط
               </span>
@@ -463,7 +463,7 @@ export const LoginScreen: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-xs text-slate-500 font-medium">
+        <p className="text-center text-[11px] text-slate-500 font-medium">
           محطات كويك للوقود © {new Date().getFullYear()} • جميع الحقوق محفوظة
         </p>
       </div>
