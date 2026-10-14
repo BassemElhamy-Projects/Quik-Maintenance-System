@@ -918,7 +918,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="hidden sm:flex items-center gap-1.5 text-slate-500 text-xs font-medium">
-            <span>تحليل فوري لبيانات الصيانة السحابية</span>
+            <span>تحليل فوري لبيانات الصيانة والنظام</span>
           </div>
         </div>
 
