@@ -39,11 +39,11 @@ export interface DriveStatus {
 export async function checkDriveStatusAsync(): Promise<DriveStatus> {
   return {
     isDriveDAvailable: true,
-    driveLetter: 'Cloud',
-    targetRootPath: 'قاعدة البيانات السحابية',
-    backupsPath: 'النسخ الاحتياطية السحابية',
+    driveLetter: 'النظام',
+    targetRootPath: 'قاعدة بيانات النظام',
+    backupsPath: 'النسخ الاحتياطية',
     dataPath: 'البيانات المركزية',
-    exportsPath: 'التحميلات السحابية',
+    exportsPath: 'الملفات المُصدّرة',
     isPackagedElectron: false
   };
 }
@@ -51,11 +51,11 @@ export async function checkDriveStatusAsync(): Promise<DriveStatus> {
 export function checkDriveStatus(): DriveStatus {
   return {
     isDriveDAvailable: true,
-    driveLetter: 'Cloud',
-    targetRootPath: 'قاعدة البيانات السحابية',
-    backupsPath: 'النسخ الاحتياطية السحابية',
+    driveLetter: 'النظام',
+    targetRootPath: 'قاعدة بيانات النظام',
+    backupsPath: 'النسخ الاحتياطية',
     dataPath: 'البيانات المركزية',
-    exportsPath: 'التحميلات السحابية',
+    exportsPath: 'الملفات المُصدّرة',
     isPackagedElectron: false
   };
 }
@@ -63,7 +63,7 @@ export function checkDriveStatus(): DriveStatus {
 export async function openDataFolder(): Promise<{ success: boolean; error?: string }> {
   return {
     success: false,
-    error: 'التطبيق يعمل بنظام سحابي مركزي مباشر'
+    error: 'لا يتوفر فتح مجلد بيانات من داخل التطبيق.'
   };
 }
 
@@ -79,7 +79,7 @@ export async function getBackupCatalogAsync(): Promise<BackupMetadata[]> {
 export async function executeManualBackup(data: AppData): Promise<{ success: boolean; filename?: string; error?: string }> {
   return {
     success: true,
-    filename: `CloudBackup_${new Date().toISOString().slice(0, 10)}.json`
+    filename: `MaintenanceBackup_${new Date().toISOString().slice(0, 10)}.json`
   };
 }
 
@@ -91,7 +91,7 @@ export async function executeSafetyBackup(
   data: AppData,
   reason: 'delete' | 'clear' | 'import' | 'restore'
 ): Promise<{ success: boolean; filename?: string; error?: string }> {
-  return { success: true, filename: `SafetyCloudBackup_${reason}.json` };
+  return { success: true, filename: `SafetyBackup_${reason}.json` };
 }
 
 export async function restoreBackupFromFile(fileContent: string): Promise<{ success: boolean; restoredData?: AppData; error?: string }> {
