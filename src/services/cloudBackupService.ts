@@ -433,6 +433,32 @@ export async function createCloudBackup(
   try {
     const { data: { session } } = await supabase.auth.getSession();
 
+    // Only an active system administrator may create manual, automatic, or safety backups.
+    const userId = session?.user?.id;
+    if (!userId) {
+      return {
+        success: false,
+        error: 'إنشاء النسخ الاحتياطية متاح لمدير النظام المفعّل فقط.'
+      };
+    }
+
+    const { data: currentProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role, is_active')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (
+      profileError ||
+      currentProfile?.role !== 'admin' ||
+      currentProfile?.is_active !== true
+    ) {
+      return {
+        success: false,
+        error: 'إنشاء النسخ الاحتياطية متاح لمدير النظام المفعّل فقط.'
+      };
+    }
+
     const [profilesRes, stationsRes, countersRes, maintRes, inspRes, incRes, auditRes] = await Promise.all([
       supabase.from('profiles').select('*'),
       supabase.from('stations').select('*'),
