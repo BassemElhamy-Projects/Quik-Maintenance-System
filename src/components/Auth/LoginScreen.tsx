@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { Fuel, Lock, User, Eye, EyeOff, AlertCircle, Loader2, ShieldCheck, UserPlus, Phone } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, AlertCircle, Loader2, ShieldCheck, UserPlus, Phone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export const LoginScreen: React.FC = () => {
@@ -32,10 +33,12 @@ export const LoginScreen: React.FC = () => {
 
   useEffect(() => {
     let isMounted = true;
+
     async function checkAdmin() {
       if (isSupabaseReady) {
         setIsCheckingSetup(true);
         const needsSetup = await checkNeedsFirstAdmin();
+
         if (isMounted) {
           setIsFirstAdminSetup(needsSetup);
           setIsCheckingSetup(false);
@@ -44,7 +47,9 @@ export const LoginScreen: React.FC = () => {
         setIsCheckingSetup(false);
       }
     }
+
     checkAdmin();
+
     return () => {
       isMounted = false;
     };
@@ -56,6 +61,7 @@ export const LoginScreen: React.FC = () => {
     clearAuthError();
 
     const trimmedUsername = username.trim();
+
     if (!trimmedUsername || !password) {
       setLocalError('يرجى إدخال اسم المستخدم وكلمة المرور.');
       return;
@@ -76,6 +82,7 @@ export const LoginScreen: React.FC = () => {
     clearAuthError();
 
     const trimmedUsername = adminUsername.trim();
+
     if (!trimmedUsername || trimmedUsername.length < 3) {
       setLocalError('اسم المستخدم يجب أن لا يقل عن 3 أحرف أو أرقام.');
       return;
@@ -97,12 +104,14 @@ export const LoginScreen: React.FC = () => {
     }
 
     setSubmitting(true);
+
     const res = await initializeFirstAdmin(
       trimmedUsername,
       adminPassword,
       adminFullName.trim() || 'مدير النظام الأول',
       adminPhone.trim() || undefined
     );
+
     setSubmitting(false);
 
     if (!res.success && res.error) {
@@ -120,18 +129,23 @@ export const LoginScreen: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 sm:px-6 lg:px-8 dir-rtl font-['Cairo',sans-serif] selection:bg-orange-500 selection:text-white relative overflow-hidden">
-      
+
       {/* Background Subtle Accents */}
       <div className="absolute -top-40 -right-40 w-96 h-96 bg-orange-500/5 rounded-full blur-3xl pointer-events-none"></div>
       <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-orange-600/5 rounded-full blur-3xl pointer-events-none"></div>
 
       <div className="w-full max-w-md space-y-6 relative z-10">
-        
+
         {/* Brand Header */}
         <div className="text-center space-y-2.5">
-          <div className="inline-flex p-3.5 rounded-3xl bg-gradient-to-tr from-orange-500 to-orange-600 text-white shadow-xl shadow-orange-500/20 mb-1 ring-4 ring-orange-500/10">
-            <Fuel className="w-9 h-9 stroke-[2.5]" />
+          <div className="flex justify-center mb-1">
+            <img
+              src="/quik-logo.png"
+              alt="Quik Logo"
+              className="w-36 h-36 object-contain"
+            />
           </div>
+
           <div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 font-['Cairo']">
               كويك لمحطات الوقود
@@ -155,7 +169,7 @@ export const LoginScreen: React.FC = () => {
 
         {/* Card */}
         <div className="bg-white border border-slate-200/90 p-6 sm:p-8 rounded-3xl shadow-xl shadow-slate-200/60 space-y-5 text-right">
-          
+
           {/* Error Banner */}
           {displayError && (
             <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-start gap-2.5 animate-in fade-in duration-200">
@@ -326,7 +340,7 @@ export const LoginScreen: React.FC = () => {
           ) : (
             /* STANDARD LOGIN FORM */
             <form onSubmit={handleSubmitLogin} className="space-y-4">
-              
+
               {/* Username Field */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">
