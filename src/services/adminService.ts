@@ -7,8 +7,7 @@ export interface AdminResetPasswordResult {
 }
 
 /**
- * Calls the secure Supabase Edge Function 'init-first-admin'
- * to initialize the first admin account on the server.
+ * Calls the secure server function to initialize the first admin account.
  */
 export async function initializeFirstAdminServer(
   username: string,
@@ -17,7 +16,7 @@ export async function initializeFirstAdminServer(
   phone?: string
 ): Promise<{ success: boolean; message?: string; error?: string }> {
   if (!supabase) {
-    return { success: false, error: 'خدمة السحابة غير مهيأة.' };
+    return { success: false, error: 'تعذر الاتصال بالنظام. يرجى التواصل مع مسؤول النظام.' };
   }
 
   try {
@@ -47,8 +46,8 @@ export async function initializeFirstAdminServer(
         extractedMsg?.includes('404');
 
       const detailedMsg = isDeployOrNetworkError
-        ? 'تعذر الاتصال بالخدمة السحابية لتهيئة المدير الأول. يرجى إعادة المحاولة.'
-        : extractedMsg || 'تعذر استدعاء خدمة تهيئة المدير الأول.';
+        ? 'تعذر الاتصال بالنظام لتهيئة المدير الأول. يرجى إعادة المحاولة.'
+        : extractedMsg || 'تعذر تنفيذ تهيئة المدير الأول.';
 
       return {
         success: false,
@@ -79,8 +78,7 @@ export async function initializeFirstAdminServer(
 }
 
 /**
- * Calls the secure Supabase Edge Function 'admin-reset-password'
- * to reset another user's password without exposing elevated keys.
+ * Calls the secure server function to reset another user's password.
  * Server-side authorization must ensure only active Admins can do this.
  */
 export async function resetUserPasswordByAdmin(
@@ -90,7 +88,7 @@ export async function resetUserPasswordByAdmin(
   if (!supabase) {
     return {
       success: false,
-      error: 'خدمة السحابة غير مهيأة.'
+      error: 'تعذر الاتصال بالنظام. يرجى التواصل مع مسؤول النظام.'
     };
   }
 
@@ -123,7 +121,7 @@ export async function resetUserPasswordByAdmin(
         extractedMsg.includes('404')
       ) {
         extractedMsg =
-          'تعذر الاتصال بالخدمة السحابية لإعادة تعيين كلمة المرور.';
+          'تعذر الاتصال بالنظام لإعادة تعيين كلمة المرور.';
       }
 
       return {
@@ -147,13 +145,13 @@ export async function resetUserPasswordByAdmin(
     return {
       success: false,
       error:
-        'تعذر إتمام العملية بسبب انقطاع الاتصال بالخدمة السحابية.'
+        'تعذر إتمام العملية بسبب انقطاع الاتصال بالنظام.'
     };
   }
 }
 
 /**
- * Calls the secure Supabase Edge Function 'admin-create-user'.
+ * Calls the secure server function to create an admin-managed user.
  * Refreshes an expiring session and explicitly forwards the access token.
  */
 export async function addNewUserByAdmin(
@@ -166,7 +164,7 @@ export async function addNewUserByAdmin(
   if (!supabase) {
     return {
       success: false,
-      error: 'خدمة السحابة غير مهيأة.'
+      error: 'تعذر الاتصال بالنظام. يرجى التواصل مع مسؤول النظام.'
     };
   }
 
@@ -217,7 +215,7 @@ export async function addNewUserByAdmin(
       };
     }
 
-    // Explicitly forward the current access token to the Edge Function.
+    // Explicitly forward the current access token to the server function.
     const { data, error } = await supabase.functions.invoke(
       'admin-create-user',
       {
@@ -243,7 +241,7 @@ export async function addNewUserByAdmin(
 
       if (extractedMsg?.includes('جلسة المستخدم غير صالحة')) {
         extractedMsg =
-          'رفضت الخدمة السحابية جلسة الدخول. سجّل الخروج ثم ادخل مرة أخرى، وإذا استمرت المشكلة فراجع إعدادات Supabase Auth.';
+          'تعذر التحقق من جلسة الدخول. سجّل الخروج ثم ادخل مرة أخرى، وإذا استمرت المشكلة فتواصل مع مسؤول النظام.';
       } else if (
         !extractedMsg ||
         extractedMsg.includes('Failed to send') ||
@@ -252,7 +250,7 @@ export async function addNewUserByAdmin(
         extractedMsg.includes('404')
       ) {
         extractedMsg =
-          'تعذر الاتصال بالخدمة السحابية لإضافة المستخدم.';
+          'تعذر الاتصال بالنظام لإضافة المستخدم.';
       }
 
       return {
@@ -276,7 +274,7 @@ export async function addNewUserByAdmin(
     return {
       success: false,
       error:
-        'تعذر إتمام العملية بسبب انقطاع الاتصال بالخدمة السحابية.'
+        'تعذر إتمام العملية بسبب انقطاع الاتصال بالنظام.'
     };
   }
 }
