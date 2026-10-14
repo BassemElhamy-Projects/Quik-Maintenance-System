@@ -142,7 +142,7 @@ export const LoginScreen: React.FC = () => {
             <img
               src="/quik-logo.png"
               alt="Quik Logo"
-              className="w-44 h-44 object-contain"
+              className="w-72 h-40 object-contain"
             />
           </div>
 
