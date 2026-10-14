@@ -178,13 +178,13 @@ export const InspectionSection: React.FC<InspectionSectionProps> = ({
     try {
       const res = await Promise.resolve(onSaveInspection(updated) as any);
       if (res && typeof res === 'object' && res.success === false) {
-        setFormError(res.error || 'تعذر حفظ تقرير التفتيش في قاعدة البيانات السحابية.');
+        setFormError(res.error || 'تعذر حفظ تقرير التفتيش. يرجى المحاولة مرة أخرى.');
         return;
       }
       setIsModalOpen(false);
       setEditingInspection(null);
     } catch (err: any) {
-      setFormError(err?.message || 'تعذر حفظ تقرير التفتيش في قاعدة البيانات السحابية.');
+      setFormError(err?.message || 'تعذر حفظ تقرير التفتيش. يرجى المحاولة مرة أخرى.');
     }
   };
 
