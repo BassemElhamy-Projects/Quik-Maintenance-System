@@ -126,6 +126,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         if (error) {
           console.warn('[AUTH] Session load error:', error.message);
+
+          // An invalid/missing refresh token cannot restore this saved session.
+          // Clear only the local session so the next visit starts cleanly;
+          // do not sign out other devices or alter the user's account.
+          const sessionError = error.message.toLowerCase();
+          if (
+            sessionError.includes('refresh token') ||
+            sessionError.includes('session not found') ||
+            sessionError.includes('token not found')
+          ) {
+            try {
+              await supabase!.auth.signOut({ scope: 'local' });
+            } catch (clearError) {
+              console.warn('[AUTH] Could not clear stale local session:', clearError);
+            }
+          }
         }
 
         if (!isMounted || authRequestIdRef.current !== reqId) return;
@@ -304,16 +320,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         password
       });
 
-      // Backwards compatibility fallback for older local accounts if initial attempt fails
-      if (error && !targetEmail.endsWith('@quik.local')) {
+      // Only try the legacy @quik.local identity when the profile did not
+      // provide a canonical email. If profiles already contains an email,
+      // that value is the source of truth and a failed attempt should be
+      // reported instead of silently trying a second identity.
+      if (error && !profMatch?.email && !targetEmail.endsWith('@quik.local')) {
         const localFallbackEmail = `${cleanUsername}@quik.local`;
         const fallbackRes = await supabase.auth.signInWithPassword({
           email: localFallbackEmail,
           password
         });
+
         if (!fallbackRes.error && fallbackRes.data.user) {
           data = fallbackRes.data;
           error = null;
+        } else if (fallbackRes.error) {
+          // Keep the final authentication error for the user-facing response.
+          error = fallbackRes.error;
         }
       }
 
