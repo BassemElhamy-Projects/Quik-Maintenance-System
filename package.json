@@ -1,4 +1,3 @@
-```json
 {
   "name": "quik-maintenance-system",
   "private": true,
@@ -70,4 +69,3 @@
     "typescript": "^7.0.2"
   }
 }
-```
