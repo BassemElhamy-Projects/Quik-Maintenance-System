@@ -538,17 +538,7 @@ export async function restoreCloudBackup(backupId: string): Promise<{ success: b
   if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
 
   try {
-    // 1. Create a mandatory Cloud Safety Backup
-    const safetyRes = await createCloudBackup('safety', 'نسخة أمان أوتوماتيكية قبل تنفيذ استعادة النسخة السحابية');
-    if (!safetyRes.success || !safetyRes.backup?.id) {
-      return {
-        success: false,
-        error: `فشل إنشاء نسخة الأمان السحابية الإلزامية: ${safetyRes.error || 'خطأ غير معروف'}`
-      };
-    }
-    const safetyBackupId = safetyRes.backup.id;
-
-    // 2. Fetch target backup record
+    // 1. Fetch target backup record
     const { data: targetBackup, error: fetchErr } = await supabase
       .from('cloud_backups')
       .select('*')
@@ -628,7 +618,6 @@ export async function restoreCloudBackup(backupId: string): Promise<{ success: b
       success: true,
       data: {
         message: 'تم استعادة قاعدة البيانات السحابية بنجاح.',
-        safetyBackupId
       }
     };
   } catch (err: any) {
@@ -679,13 +668,12 @@ export function parseAndValidateLocalBackupFile(input: string | object): BackupV
 }
 
 /**
- * Restores cloud database state directly from a validated local JSON snapshot with safety backup
- * and verified restored row count assertions.
+ * Restores cloud database state directly from a validated local JSON snapshot
+ * and verifies restored row counts.
  */
 export function restoreFromLocalBackupSnapshot(snapshotData: any): Promise<{
   success: boolean;
   message?: string;
-  safetyBackupId?: string;
   verifiedCounts?: {
     maintenance_requests: number;
     stations: number;
@@ -706,16 +694,7 @@ export function restoreFromLocalBackupSnapshot(snapshotData: any): Promise<{
     }
 
     try {
-      // 1. Create a mandatory Cloud Safety Backup of current live data before restoring
-      const safetyRes = await createCloudBackup('safety', 'نسخة أمان أوتوماتيكية قبل الاستعادة من ملف حاسوب محلي');
-      if (!safetyRes.success || !safetyRes.backup?.id) {
-        return {
-          success: false,
-          error: `فشل إنشاء نسخة الأمان السحابية الإلزامية قبل الاستعادة: ${safetyRes.error || 'لم يتم استرجاع معرّف النسخة بنجاح'}. تم إيقاف عملية الاستعادة لحماية البيانات.`
-        };
-      }
-      const safetyBackupId = safetyRes.backup.id;
-
+      // 1. Restore without requiring a pre-restore safety backup
       const tables = norm.tables;
 
       // 2. Clear existing operational tables in strict FK dependency order
@@ -832,7 +811,6 @@ export function restoreFromLocalBackupSnapshot(snapshotData: any): Promise<{
       return {
         success: true,
         message: 'تمت استعادة قاعدة البيانات السحابية من ملف الحاسوب بنجاح والتحقق من مطابقة كافة أعداد السجلات.',
-        safetyBackupId,
         verifiedCounts: {
           maintenance_requests: actualMaint,
           stations: actualSt,
@@ -977,5 +955,23 @@ export async function executeCloudSafetyBackup(reason = 'نسخة أمان أو�
  * Checks and creates automatic cloud backup if needed
  */
 export async function checkAndRunAutomaticCloudBackup(): Promise<{ success: boolean; backup?: CloudBackupItem; error?: string }> {
-  return createCloudBackup('automatic', 'نسخة أوتوماتيكية دورية');
+  const backupsRes = await listCloudBackups();
+  if (!backupsRes.success) {
+    return { success: false, error: backupsRes.error || DEFAULT_BACKUP_ERROR };
+  }
+
+  const intervalMs = 30 * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const latestAutomatic = (backupsRes.backups || [])
+    .filter((backup) => backup.backup_type === 'automatic' && backup.status === 'successful')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+  if (latestAutomatic) {
+    const lastBackupTime = new Date(latestAutomatic.created_at).getTime();
+    if (Number.isFinite(lastBackupTime) && now - lastBackupTime < intervalMs) {
+      return { success: true, backup: latestAutomatic };
+    }
+  }
+
+  return createCloudBackup('automatic', 'نسخة أوتوماتيكية دورية كل 30 يومًا');
 }
