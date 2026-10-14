@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   Lock,
@@ -196,7 +195,7 @@ export const LoginScreen: React.FC = () => {
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-semibold flex items-start gap-2">
               <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span className="leading-relaxed">
-                تعذر تهيئة الاتصال بالخدمة السحابية. يرجى التواصل مع مسؤول النظام.
+                تعذر الاتصال بالنظام. يرجى التحقق من اتصال الإنترنت أو التواصل مع مسؤول النظام.
               </span>
             </div>
           )}
