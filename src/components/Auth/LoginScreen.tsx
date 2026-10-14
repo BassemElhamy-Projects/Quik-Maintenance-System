@@ -172,15 +172,11 @@ export const LoginScreen: React.FC = () => {
             </p>
           </div>
 
-          {isFirstAdminSetup ? (
+          {isFirstAdminSetup && (
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-100/80 border border-orange-200 text-orange-800 text-[11px] font-bold">
               <UserPlus className="w-3.5 h-3.5 text-orange-600" />
               <span>تهيئة مدير النظام الأول (Setup Mode)</span>
             </div>
-          ) : (
-            <p className="text-slate-500 text-[11px] max-w-xs mx-auto font-medium">
-              سجل دخولك باسم المستخدم وكلمة المرور للوصول إلى النظام
-            </p>
           )}
         </div>
 
