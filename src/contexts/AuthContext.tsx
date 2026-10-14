@@ -47,14 +47,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
+
   const isSupabaseReady = isSupabaseConfigured();
   const currentUserIdRef = useRef<string | null>(null);
   const currentSessionRef = useRef<Session | null>(null);
-  const isFetchingProfileRef = useRef<boolean>(false);
   const isAuthenticatingRef = useRef<boolean>(false);
   const authRequestIdRef = useRef<number>(0);
 
-  const fetchProfile = useCallback(async (userId: string, userEmail?: string): Promise<UserProfile | null> => {
+  // Read-only profile fetch: prevents client-side privilege escalation
+  const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
     if (!supabase) return null;
 
     try {
@@ -69,41 +70,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return null;
       }
 
-      if (data) {
-        return data as UserProfile;
-      }
-
-      // If user exists in Auth but has no profile yet (e.g. first admin initialized in project)
-      const { count } = await supabase
-        .from('profiles')
-        .select('id', { count: 'exact', head: true });
-
-      const isFirstUser = (count ?? 0) === 0;
-      const initialRole: UserRole = isFirstUser ? 'admin' : 'user';
-      const rawUsername = userEmail ? userEmail.split('@')[0] : `user_${userId.slice(0, 5)}`;
-      const cleanUsername = normalizeUsername(rawUsername);
-
-      const newProfile: Partial<UserProfile> = {
-        id: userId,
-        username: cleanUsername,
-        email: userEmail || getInternalEmailForUsername(cleanUsername),
-        full_name: isFirstUser ? 'مدير النظام الأول' : cleanUsername,
-        role: initialRole,
-        is_active: true
-      };
-
-      const { data: inserted, error: insertErr } = await supabase
-        .from('profiles')
-        .insert(newProfile as any)
-        .select()
-        .single();
-
-      if (insertErr) {
-        console.warn('[AUTH] Auto-profile creation error:', insertErr.message);
-        return null;
-      }
-
-      return inserted as UserProfile;
+      return (data as UserProfile) || null;
     } catch (err) {
       console.error('[AUTH] Profile fetch exception:', err);
       return null;
@@ -123,13 +90,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const reqId = ++authRequestIdRef.current;
       try {
         const { data: { session: initialSession }, error } = await supabase!.auth.getSession();
-        
+
         if (error) {
           console.warn('[AUTH] Session load error:', error.message);
-
-          // An invalid/missing refresh token cannot restore this saved session.
-          // Clear only the local session so the next visit starts cleanly;
-          // do not sign out other devices or alter the user's account.
           const sessionError = error.message.toLowerCase();
           if (
             sessionError.includes('refresh token') ||
@@ -149,20 +112,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (initialSession?.user) {
           currentUserIdRef.current = initialSession.user.id;
           currentSessionRef.current = initialSession;
-          isFetchingProfileRef.current = true;
-          const userProf = await fetchProfile(initialSession.user.id, initialSession.user.email);
-          isFetchingProfileRef.current = false;
-          
+
+          const userProf = await fetchProfile(initialSession.user.id);
+
           if (!isMounted || authRequestIdRef.current !== reqId) return;
 
-          if (userProf && !userProf.is_active) {
+          if (!userProf) {
+            currentUserIdRef.current = null;
+            currentSessionRef.current = null;
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setAuthError('تعذر العثور على ملف تعريف الحساب. يرجى التواصل مع مسؤول النظام.');
+            await supabase!.auth.signOut({ scope: 'local' });
+          } else if (!userProf.is_active) {
             currentUserIdRef.current = null;
             currentSessionRef.current = null;
             setSession(null);
             setUser(null);
             setProfile(null);
             setAuthError('هذا الحساب غير مفعل، يرجى التواصل مع مدير النظام.');
-            await supabase!.auth.signOut();
+            await supabase!.auth.signOut({ scope: 'local' });
           } else {
             setSession(initialSession);
             setUser(initialSession.user);
@@ -180,8 +150,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     initSession();
 
-    // Listen for auth state changes (login, logout, token refresh)
-    // Synchronous callback: Supabase queries are NOT awaited directly inside onAuthStateChange
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
       if (!isMounted) return;
 
@@ -189,7 +157,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         authRequestIdRef.current++;
         currentUserIdRef.current = null;
         currentSessionRef.current = null;
-        isFetchingProfileRef.current = false;
         isAuthenticatingRef.current = false;
         setSession(null);
         setUser(null);
@@ -207,15 +174,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       if (event === 'SIGNED_IN' && currentSession?.user) {
-        // Tab-switch and focus revalidation protection:
-        // When switching tabs in Chrome, Supabase GoTrueClient triggers _recoverAndRefresh() on visibilitychange,
-        // which emits a 'SIGNED_IN' event for the existing session.
+        // Tab-switch and focus revalidation protection
         if (currentUserIdRef.current === currentSession.user.id) {
-          // If the token hasn't changed, ignore completely - no state update, no re-render, no loading
           if (currentSessionRef.current?.access_token === currentSession.access_token) {
             return;
           }
-          // Token refreshed silently: update session reference without reloading profile or toggling loading
           currentSessionRef.current = currentSession;
           setSession(currentSession);
           return;
@@ -228,37 +191,36 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return;
         }
 
-        // Avoid concurrent duplicate profile fetch if initSession or another fetch is already in flight
-        if (isFetchingProfileRef.current) {
-          return;
-        }
-
-        // External or unhandled sign-in: trigger non-blocking profile resolution outside callback
         const reqId = ++authRequestIdRef.current;
         const targetUserId = currentSession.user.id;
-        const targetUserEmail = currentSession.user.email;
 
         currentUserIdRef.current = targetUserId;
         currentSessionRef.current = currentSession;
         setSession(currentSession);
         setUser(currentSession.user);
 
-        // Resolve profile asynchronously without blocking or awaiting inside the callback
         (async () => {
           try {
-            isFetchingProfileRef.current = true;
-            const userProf = await fetchProfile(targetUserId, targetUserEmail);
-            
+            const userProf = await fetchProfile(targetUserId);
+
             if (!isMounted || authRequestIdRef.current !== reqId) return;
 
-            if (userProf && !userProf.is_active) {
+            if (!userProf) {
+              currentUserIdRef.current = null;
+              currentSessionRef.current = null;
+              setSession(null);
+              setUser(null);
+              setProfile(null);
+              setAuthError('تعذر العثور على ملف تعريف الحساب. يرجى التواصل مع مسؤول النظام.');
+              await supabase!.auth.signOut({ scope: 'local' });
+            } else if (!userProf.is_active) {
               currentUserIdRef.current = null;
               currentSessionRef.current = null;
               setSession(null);
               setUser(null);
               setProfile(null);
               setAuthError('هذا الحساب غير مفعل، يرجى التواصل مع مدير النظام.');
-              await supabase!.auth.signOut();
+              await supabase!.auth.signOut({ scope: 'local' });
             } else {
               setProfile(userProf);
               setAuthError(null);
@@ -266,7 +228,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           } catch (err) {
             console.error('[AUTH] Profile fetch in auth change error:', err);
           } finally {
-            isFetchingProfileRef.current = false;
             if (isMounted && authRequestIdRef.current === reqId) {
               setIsLoading(false);
             }
@@ -302,34 +263,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const reqId = ++authRequestIdRef.current;
 
     try {
-      // Resolve the stored email first. When a profile has no email, try the
-      // legacy identity used by existing Quik accounts before the newer
-      // internal identity. This avoids a predictable failed Auth request for
-      // accounts that still use @quik.local.
-      const { data: profMatch, error: profileLookupError } = await supabase
-        .from('profiles')
-        .select('email')
-        .ilike('username', cleanUsername)
-        .maybeSingle();
+      // 1. Resolve stored email safely via RPC (avoids exposing profiles table to anon)
+      let resolvedEmail: string | null = null;
+      const { data: rpcEmail, error: rpcError } = await supabase.rpc('get_login_email_by_username', {
+        p_username: cleanUsername
+      });
 
-      if (profileLookupError) {
-        console.warn('[AUTH] Username profile lookup failed:', profileLookupError.message);
+      if (!rpcError && typeof rpcEmail === 'string' && rpcEmail.trim() !== '') {
+        resolvedEmail = rpcEmail.trim();
       }
 
-      const hasProfileEmail = Boolean(profMatch?.email);
-      let targetEmail = profMatch?.email || `${cleanUsername}@quik.local`;
+      const hasProfileEmail = Boolean(resolvedEmail);
+      const targetEmail = resolvedEmail || getInternalEmailForUsername(cleanUsername);
 
       let { data, error } = await supabase.auth.signInWithPassword({
         email: targetEmail,
         password
       });
 
-      // Only try an alternate generated identity when profiles has no email.
-      // Never silently switch identities if the profile specifies its email.
+      // Fallback for legacy @quik.local accounts if RPC was not found or returned empty
       if (error && !hasProfileEmail) {
-        const alternateEmail = targetEmail.endsWith('@quik.local')
-          ? getInternalEmailForUsername(cleanUsername)
-          : `${cleanUsername}@quik.local`;
+        const alternateEmail = targetEmail.endsWith('@quik.internal')
+          ? `${cleanUsername}@quik.local`
+          : getInternalEmailForUsername(cleanUsername);
 
         const fallbackRes = await supabase.auth.signInWithPassword({
           email: alternateEmail,
@@ -339,8 +295,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (!fallbackRes.error && fallbackRes.data.user) {
           data = fallbackRes.data;
           error = null;
-        } else if (fallbackRes.error) {
-          error = fallbackRes.error;
         }
       }
 
@@ -364,21 +318,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (data?.user) {
         currentUserIdRef.current = data.user.id;
         currentSessionRef.current = data.session;
-        isFetchingProfileRef.current = true;
-        const userProf = await fetchProfile(data.user.id, data.user.email);
-        isFetchingProfileRef.current = false;
-        
+
+        const userProf = await fetchProfile(data.user.id);
+
         if (authRequestIdRef.current !== reqId) {
           return { success: false, error: 'تم إلغاء الجلسة.' };
         }
 
-        if (userProf && !userProf.is_active) {
+        if (!userProf) {
+          currentUserIdRef.current = null;
+          currentSessionRef.current = null;
+          const noProfileMsg = 'تعذر العثور على ملف تعريف المستخدم. يرجى التواصل مع مسؤول النظام.';
+          setAuthError(noProfileMsg);
+          setIsLoading(false);
+          await supabase.auth.signOut({ scope: 'local' });
+          return { success: false, error: noProfileMsg };
+        }
+
+        if (!userProf.is_active) {
           currentUserIdRef.current = null;
           currentSessionRef.current = null;
           const inactiveMsg = 'هذا الحساب غير مفعل، يرجى التواصل مع مدير النظام.';
           setAuthError(inactiveMsg);
           setIsLoading(false);
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: 'local' });
           return { success: false, error: inactiveMsg };
         }
 
@@ -391,7 +354,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       setIsLoading(false);
-      return { success: true };
+      return { success: false, error: 'تعذر استرجاع بيانات الجلسة.' };
     } catch {
       const errorMsg = 'تعذر تسجيل الدخول بسبب خطأ غير متوقع. يرجى المحاولة مرة أخرى أو التواصل مع مسؤول النظام.';
       setAuthError(errorMsg);
@@ -405,14 +368,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const checkNeedsFirstAdmin = useCallback(async (): Promise<boolean> => {
     if (!supabase) return false;
     try {
-      // 1. Try RPC function that is accessible to anon/unauthenticated users safely
       const { data: hasAdmin, error: rpcError } = await supabase.rpc('has_active_admin');
 
       if (!rpcError && typeof hasAdmin === 'boolean') {
         return !hasAdmin;
       }
 
-      // 2. Fallback query
       const { count, error } = await supabase
         .from('profiles')
         .select('id', { count: 'exact', head: true })
@@ -465,7 +426,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
 
     try {
-      // 1. Verify no active admin exists in the database
       const needsInit = await checkNeedsFirstAdmin();
       if (!needsInit) {
         const err = 'تمت تهيئة مدير النظام مسبقاً. التسجيل الذاتي غير متاح.';
@@ -474,12 +434,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { success: false, error: err };
       }
 
-      // 2. Privileged server-side creation via Edge Function (No client-side signUp fallback)
       const edgeRes = await initializeFirstAdminServer(cleanUsername, password, fullName, phone);
 
       if (!edgeRes.success) {
         const rawErr = edgeRes.error || '';
-        // Map known safe business errors or fallback to enterprise Arabic message
         const hasArabic = /[\u0600-\u06FF]/.test(rawErr);
         const hasTechnicalTokens = /(?:functions?|error:|exception|status code|network|fail|500|400|403|404)/i.test(rawErr);
         const errMessage = hasArabic && !hasTechnicalTokens
@@ -491,13 +449,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { success: false, error: errMessage };
       }
 
-      // 3. Log the initialization event
       await logAuthEvent({
         action: 'USER_CREATED',
         details: { username: cleanUsername, role: 'admin', isFirstAdmin: true }
       });
 
-      // 4. Sign in immediately to establish session
       const loginRes = await loginWithUsername(cleanUsername, password);
       return loginRes;
     } catch {
@@ -512,7 +468,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     authRequestIdRef.current++;
     currentUserIdRef.current = null;
     currentSessionRef.current = null;
-    isFetchingProfileRef.current = false;
     isAuthenticatingRef.current = false;
     if (user) {
       await logAuthEvent({ action: 'LOGOUT' }, user);
@@ -567,11 +522,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [user]);
 
   const refreshProfile = useCallback(async (): Promise<void> => {
-    if (user) {
-      const p = await fetchProfile(user.id, user.email);
+    if (user && supabase) {
+      const p = await fetchProfile(user.id);
+      if (!p || !p.is_active) {
+        await logout();
+        setAuthError('تم إيقاف الحساب أو لم يعد متاحاً.');
+        return;
+      }
       setProfile(p);
     }
-  }, [user, fetchProfile]);
+  }, [user, fetchProfile, logout]);
 
   const clearAuthError = useCallback(() => {
     setAuthError(null);
