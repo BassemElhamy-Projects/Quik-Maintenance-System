@@ -24,14 +24,12 @@ export const LoginScreen: React.FC = () => {
     clearAuthError
   } = useAuth();
 
-  // Login form state
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  // First Admin Setup state
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
   const [isFirstAdminSetup, setIsFirstAdminSetup] = useState(false);
   const [adminUsername, setAdminUsername] = useState('bassem_admin');
@@ -47,7 +45,6 @@ export const LoginScreen: React.FC = () => {
     async function checkAdmin() {
       if (isSupabaseReady) {
         setIsCheckingSetup(true);
-
         const needsSetup = await checkNeedsFirstAdmin();
 
         if (isMounted) {
@@ -80,12 +77,16 @@ export const LoginScreen: React.FC = () => {
 
     setSubmitting(true);
 
-    const res = await loginWithUsername(trimmedUsername, password);
+    try {
+      const res = await loginWithUsername(trimmedUsername, password);
 
-    setSubmitting(false);
-
-    if (!res.success && res.error) {
-      setLocalError(res.error);
+      if (!res.success && res.error) {
+        setLocalError(res.error);
+      }
+    } catch {
+      setLocalError('حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -120,46 +121,44 @@ export const LoginScreen: React.FC = () => {
 
     setSubmitting(true);
 
-    const res = await initializeFirstAdmin(
-      trimmedUsername,
-      adminPassword,
-      adminFullName.trim() || 'مدير النظام الأول',
-      adminPhone.trim() || undefined
-    );
+    try {
+      const res = await initializeFirstAdmin(
+        trimmedUsername,
+        adminPassword,
+        adminFullName.trim() || 'مدير النظام الأول',
+        adminPhone.trim() || undefined
+      );
 
-    setSubmitting(false);
-
-    if (!res.success && res.error) {
-      setLocalError(res.error);
+      if (!res.success && res.error) {
+        setLocalError(res.error);
+      }
+    } catch {
+      setLocalError('حدث خطأ أثناء إنشاء الحساب. حاول مرة أخرى.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const displayError = localError || authError;
 
-  if (isFirstAdminSetup) {
-    console.log('[AUTH DEBUG] RENDERING FIRST ADMIN SETUP');
-  } else {
-    console.log('[AUTH DEBUG] RENDERING LOGIN');
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 sm:px-6 lg:px-8 dir-rtl font-['Cairo',sans-serif] selection:bg-orange-500 selection:text-white relative overflow-hidden">
 
-      {/* Background Subtle Accents */}
-      <div className="absolute -top-40 -right-40 w-96 h-96 bg-orange-500/5 rounded-full blur-3xl pointer-events-none"></div>
-      <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-orange-600/5 rounded-full blur-3xl pointer-events-none"></div>
+      {/* Background */}
+      <div className="absolute -top-40 -right-40 w-96 h-96 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-orange-600/5 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md space-y-6 relative z-10">
 
         {/* Brand Header */}
         <div className="text-center space-y-2.5">
 
-          {/* Quik Logo - Enlarged to visually match the heading */}
+          {/* Quik Logo */}
           <div className="flex justify-center items-center mb-1">
             <img
               src="/quik-logo.png"
               alt="Quik Logo"
-              className="w-72 h-40 object-contain scale-[1.7]"
+              className="w-72 h-40 object-contain"
             />
           </div>
 
@@ -185,10 +184,10 @@ export const LoginScreen: React.FC = () => {
           )}
         </div>
 
-        {/* Login / Admin Setup Card */}
+        {/* Login Card */}
         <div className="bg-white border border-slate-200/90 p-6 sm:p-8 rounded-3xl shadow-xl shadow-slate-200/60 space-y-5 text-right">
 
-          {/* Error Banner */}
+          {/* Error */}
           {displayError && (
             <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-start gap-2.5 animate-in fade-in duration-200">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -196,7 +195,7 @@ export const LoginScreen: React.FC = () => {
             </div>
           )}
 
-          {/* Supabase Connection Warning */}
+          {/* Connection Warning */}
           {!isSupabaseReady && (
             <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-start gap-2.5">
               <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -213,7 +212,7 @@ export const LoginScreen: React.FC = () => {
             </div>
           ) : isFirstAdminSetup ? (
 
-            /* FIRST ADMIN INITIALIZATION FORM */
+            /* First Admin Setup */
             <form onSubmit={handleSubmitFirstAdmin} className="space-y-4">
 
               <div className="p-3.5 rounded-2xl bg-orange-50 border border-orange-200/80 text-slate-700 text-xs leading-relaxed">
@@ -223,7 +222,6 @@ export const LoginScreen: React.FC = () => {
                 لم يتم تسجيل أي مدير نظام بعد. يرجى إدخال اسم المستخدم وكلمة المرور التي ترغب بها لإنشاء حساب المدير الأول.
               </div>
 
-              {/* Admin Username */}
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-slate-700">
                   اسم مستخدم المدير (Admin Username)
@@ -241,7 +239,6 @@ export const LoginScreen: React.FC = () => {
                     value={adminUsername}
                     onChange={(e) => {
                       setAdminUsername(e.target.value);
-
                       if (displayError) {
                         setLocalError(null);
                         clearAuthError();
@@ -253,7 +250,6 @@ export const LoginScreen: React.FC = () => {
                 </div>
               </div>
 
-              {/* Full Name */}
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-slate-700">
                   الاسم الكامل
@@ -269,7 +265,6 @@ export const LoginScreen: React.FC = () => {
                 />
               </div>
 
-              {/* Phone */}
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-slate-700">
                   رقم الهاتف (اختياري)
@@ -291,7 +286,6 @@ export const LoginScreen: React.FC = () => {
                 </div>
               </div>
 
-              {/* Admin Password */}
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-slate-700">
                   كلمة المرور (اختر كلمة المرور)
@@ -309,7 +303,6 @@ export const LoginScreen: React.FC = () => {
                     value={adminPassword}
                     onChange={(e) => {
                       setAdminPassword(e.target.value);
-
                       if (displayError) {
                         setLocalError(null);
                         clearAuthError();
@@ -325,16 +318,11 @@ export const LoginScreen: React.FC = () => {
                     className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                     title={showAdminPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
                   >
-                    {showAdminPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
+                    {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
-              {/* Confirm Password */}
               <div className="space-y-1">
                 <label className="block text-xs font-bold text-slate-700">
                   تأكيد كلمة المرور
@@ -357,7 +345,6 @@ export const LoginScreen: React.FC = () => {
                 </div>
               </div>
 
-              {/* Create Admin Button */}
               <button
                 type="submit"
                 disabled={submitting || authIsLoading}
@@ -378,10 +365,9 @@ export const LoginScreen: React.FC = () => {
             </form>
           ) : (
 
-            /* STANDARD LOGIN FORM */
+            /* Standard Login */
             <form onSubmit={handleSubmitLogin} className="space-y-4">
 
-              {/* Username Field */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">
                   اسم المستخدم
@@ -400,7 +386,6 @@ export const LoginScreen: React.FC = () => {
                     value={username}
                     onChange={(e) => {
                       setUsername(e.target.value);
-
                       if (displayError) {
                         setLocalError(null);
                         clearAuthError();
@@ -412,7 +397,6 @@ export const LoginScreen: React.FC = () => {
                 </div>
               </div>
 
-              {/* Password Field */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-700">
                   كلمة المرور
@@ -430,7 +414,6 @@ export const LoginScreen: React.FC = () => {
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
-
                       if (displayError) {
                         setLocalError(null);
                         clearAuthError();
@@ -446,16 +429,11 @@ export const LoginScreen: React.FC = () => {
                     className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                     title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
                   >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4" />
-                    ) : (
-                      <Eye className="w-4 h-4" />
-                    )}
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
-              {/* Login Button */}
               <button
                 type="submit"
                 disabled={submitting || authIsLoading}
