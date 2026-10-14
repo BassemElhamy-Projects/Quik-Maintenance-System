@@ -315,87 +315,7 @@ serve(async (req: Request) => {
         );
       }
 
-      // 1. AUTOMATIC SAFETY BACKUP BEFORE RESTORE (Strictly verified)
-      let safetyBackupId: string | null = null;
-      try {
-        const [
-          curProfRes,
-          curStRes,
-          curCntRes,
-          curMaintRes,
-          curInspRes,
-          curIncRes,
-          curAuditRes
-        ] = await Promise.all([
-          adminClient.from("profiles").select("*"),
-          adminClient.from("stations").select("*"),
-          adminClient.from("section_counters").select("*"),
-          adminClient.from("maintenance_requests").select("*"),
-          adminClient.from("internal_inspections").select("*"),
-          adminClient.from("incident_records").select("*"),
-          adminClient.from("audit_logs").select("*")
-        ]);
-
-        if (curProfRes.error || curStRes.error || curCntRes.error || curMaintRes.error || curInspRes.error || curIncRes.error || curAuditRes.error) {
-          throw new Error("تعذر قراءة الحالة الراهنة لقاعدة البيانات لإنشاء نسخة الأمان.");
-        }
-
-        const safetyCounts = {
-          profiles: (curProfRes.data || []).length,
-          stations: (curStRes.data || []).length,
-          section_counters: (curCntRes.data || []).length,
-          maintenance_requests: (curMaintRes.data || []).length,
-          internal_inspections: (curInspRes.data || []).length,
-          incident_records: (curIncRes.data || []).length,
-          audit_logs: (curAuditRes.data || []).length
-        };
-
-        const now = new Date();
-        const safetyFilename = `SafetyCloudBackup_BeforeRestore_${now.toISOString().replace(/[:.]/g, "-")}.json`;
-        const safetySnapshot = {
-          backupVersion: 2,
-          createdAt: now.toISOString(),
-          backupType: "safety",
-          filename: safetyFilename,
-          recordCounts: safetyCounts,
-          tables: {
-            profiles: curProfRes.data || [],
-            stations: curStRes.data || [],
-            section_counters: curCntRes.data || [],
-            maintenance_requests: curMaintRes.data || [],
-            internal_inspections: curInspRes.data || [],
-            incident_records: curIncRes.data || [],
-            audit_logs: curAuditRes.data || []
-          }
-        };
-
-        const { data: createdSafety, error: safetyErr } = await adminClient
-          .from("cloud_backups")
-          .insert({
-            filename: safetyFilename,
-            backup_type: "safety",
-            status: "successful",
-            size_bytes: new TextEncoder().encode(JSON.stringify(safetySnapshot)).length,
-            created_by: callerUser.id,
-            created_by_name: callerName,
-            record_counts: safetyCounts,
-            snapshot_data: safetySnapshot,
-            notes: `نسخة أمان أوتوماتيكية تم إنشاؤها قبل استعادة النسخة [${targetBackup.filename}]`
-          })
-          .select()
-          .single();
-
-        if (safetyErr) {
-          throw new Error(`فشل إنشاء نسخة الأمان الأوتوماتيكية: ${safetyErr.message}`);
-        }
-        safetyBackupId = createdSafety.id;
-      } catch (safetyError: any) {
-        return new Response(
-          JSON.stringify({ error: `تم إلغاء عملية الاستعادة لحماية البيانات: ${safetyError?.message || String(safetyError)}` }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
+      // Restore directly from the selected cloud snapshot; no mandatory safety backup is created.
       // Log RESTORE_STARTED
       await adminClient.from("audit_logs").insert({
         user_id: callerUser.id,
@@ -403,7 +323,7 @@ serve(async (req: Request) => {
         action: "RESTORE_STARTED",
         entity: "cloud_backups",
         entity_id: targetBackup.id,
-        new_data: { target_filename: targetBackup.filename, safety_backup_id: safetyBackupId }
+        new_data: { target_filename: targetBackup.filename }
       });
 
       // 2. RESTORE DATABASE ATOMICALLY VIA POSTGRESQL TRANSACTION RPC
@@ -427,14 +347,13 @@ serve(async (req: Request) => {
           action: "RESTORE_COMPLETED",
           entity: "cloud_backups",
           entity_id: targetBackup.id,
-          new_data: { target_filename: targetBackup.filename, safety_backup_id: safetyBackupId }
+          new_data: { target_filename: targetBackup.filename }
         });
 
         return new Response(
           JSON.stringify({
             success: true,
             message: `تم استعادة قاعدة البيانات السحابية بنجاح من النسخة [${targetBackup.filename}].`,
-            safetyBackupId
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
@@ -446,12 +365,12 @@ serve(async (req: Request) => {
           action: "RESTORE_FAILED",
           entity: "cloud_backups",
           entity_id: targetBackup.id,
-          new_data: { error: restoreErr?.message || String(restoreErr), safety_backup_id: safetyBackupId }
+          new_data: { error: restoreErr?.message || String(restoreErr) }
         });
 
         return new Response(
           JSON.stringify({
-            error: `فشلت عملية الاستعادة: ${restoreErr?.message || String(restoreErr)}. تم الاحتفاظ بنسخة الأمان الأوتوماتيكية.`
+            error: `فشلت عملية الاستعادة: ${restoreErr?.message || String(restoreErr)}`
           }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
