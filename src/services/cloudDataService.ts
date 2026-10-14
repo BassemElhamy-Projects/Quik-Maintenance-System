@@ -157,7 +157,7 @@ export function mergeOfficialStations(dbStations: Station[]): Station[] {
  * Updates `section_counters` with exact section counts.
  */
 export async function migrateAndRenumberCloudRecordsDirectly(): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const [maintRes, insRes, incRes] = await Promise.all([
@@ -185,7 +185,7 @@ export async function migrateAndRenumberCloudRecordsDirectly(): Promise<{ succes
     };
 
     const client = supabase;
-    if (!client) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+    if (!client) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
     const batchUpdate = async <T>(items: T[], fn: (item: T, idx: number) => Promise<any>) => {
       const BATCH_SIZE = 25;
@@ -262,7 +262,7 @@ export async function migrateAndRenumberCloudRecordsDirectly(): Promise<{ succes
  * Triggers full cloud database renumbering procedure sequentially 1..N per section via RPC or Direct Fallback
  */
 export async function renumberAllCloudRecords(): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
   try {
     const { error } = await supabase.rpc('renumber_all_section_requests', {});
     if (error) {
@@ -287,7 +287,7 @@ export async function renumberAllCloudRecords(): Promise<{ success: boolean; err
  */
 export async function getNextAtomicSequence(section: string): Promise<string> {
   if (!supabase) {
-    throw new Error('الخدمة السحابية غير متوفرة حالياً.');
+    throw new Error('النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.');
   }
 
   const { data, error } = await supabase.rpc('get_next_section_sequence', {
@@ -300,7 +300,7 @@ export async function getNextAtomicSequence(section: string): Promise<string> {
   }
 
   if (!data) {
-    throw new Error(`تعذر الحصول على رقم تسلسلي من الخادم السحابي للقسم (${section}).`);
+    throw new Error(`تعذر الحصول على رقم تسلسلي للقسم (${section}).`);
   }
 
   return String(data);
@@ -314,7 +314,7 @@ export async function getNextAtomicSequence(section: string): Promise<string> {
 export async function getBatchAtomicSequences(section: string, count: number): Promise<string[]> {
   if (count <= 0) return [];
   if (!supabase) {
-    throw new Error('الخدمة السحابية غير متوفرة حالياً.');
+    throw new Error('النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.');
   }
 
   // 1. Try single atomic RPC call for entire count
@@ -412,7 +412,7 @@ export async function fetchAuthoritativeCloudData(): Promise<{
   if (!isSupabaseConfigured() || !supabase) {
     return {
       success: false,
-      error: 'إعدادات الاتصال بالخدمة السحابية غير مهيأة بعد.'
+      error: 'إعدادات الاتصال بالنظام غير مكتملة.'
     };
   }
 
@@ -426,19 +426,19 @@ export async function fetchAuthoritativeCloudData(): Promise<{
 
     if (stationsRes.error) {
       console.error('[LOAD STATIONS ERROR]:', stationsRes.error.message);
-      return { success: false, error: 'تعذر تحميل دليل المحطات من الخدمة السحابية. يرجى المحاولة مرة أخرى.' };
+      return { success: false, error: 'تعذر تحميل دليل المحطات يرجى المحاولة مرة أخرى.' };
     }
     if (requestsRes.error) {
       console.error('[LOAD REQUESTS ERROR]:', requestsRes.error.message);
-      return { success: false, error: 'تعذر تحميل طلبات الصيانة من الخدمة السحابية. يرجى المحاولة مرة أخرى.' };
+      return { success: false, error: 'تعذر تحميل طلبات الصيانة يرجى المحاولة مرة أخرى.' };
     }
     if (inspectionsRes.error) {
       console.error('[LOAD INSPECTIONS ERROR]:', inspectionsRes.error.message);
-      return { success: false, error: 'تعذر تحميل تقارير التفتيش من الخدمة السحابية. يرجى المحاولة مرة أخرى.' };
+      return { success: false, error: 'تعذر تحميل تقارير التفتيش يرجى المحاولة مرة أخرى.' };
     }
     if (incidentsRes.error) {
       console.error('[LOAD INCIDENTS ERROR]:', incidentsRes.error.message);
-      return { success: false, error: 'تعذر تحميل بلاغات الحوادث من الخدمة السحابية. يرجى المحاولة مرة أخرى.' };
+      return { success: false, error: 'تعذر تحميل بلاغات الحوادث يرجى المحاولة مرة أخرى.' };
     }
 
     // Map Stations
@@ -587,7 +587,7 @@ export async function fetchAuthoritativeCloudData(): Promise<{
     console.error('[CLOUD FETCH ERROR] Exception during cloud data load:', err);
     return {
       success: false,
-      error: 'حدث خطأ أثناء تحميل البيانات من الخدمة السحابية. يرجى التحقق من الاتصال بالمخدم والمحاولة مرة أخرى.'
+      error: 'حدث خطأ أثناء تحميل البيانات. يرجى التحقق من الاتصال بالنظام والمحاولة مرة أخرى.'
     };
   }
 }
@@ -599,7 +599,7 @@ export async function fetchAuthoritativeCloudData(): Promise<{
 export async function createCloudMaintenanceRequest(
   req: MaintenanceRequest
 ): Promise<{ success: boolean; data?: MaintenanceRequest; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const atomicNum = await getNextAtomicSequence(req.section);
@@ -641,7 +641,7 @@ export async function createCloudMaintenanceRequest(
 
     if (error) {
       console.error('[CREATE MAINTENANCE ERROR]:', error.message);
-      return { success: false, error: 'فشل حفظ طلب الصيانة في قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل حفظ طلب الصيانة. يرجى المحاولة مرة أخرى.' };
     }
 
     const created: MaintenanceRequest = {
@@ -672,14 +672,14 @@ export async function createCloudMaintenanceRequest(
     return { success: true, data: created };
   } catch (err: any) {
     console.error('[CREATE MAINTENANCE EXCEPTION]:', err);
-    return { success: false, error: 'تعذر إضافة طلب الصيانة إلى الخدمة السحابية.' };
+    return { success: false, error: 'تعذر إضافة طلب الصيانة. يرجى المحاولة مرة أخرى.' };
   }
 }
 
 export async function updateCloudMaintenanceRequest(
   req: MaintenanceRequest
 ): Promise<{ success: boolean; data?: MaintenanceRequest; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const updatePayload: any = {
@@ -711,7 +711,7 @@ export async function updateCloudMaintenanceRequest(
 
     if (error) {
       console.error('[UPDATE MAINTENANCE ERROR]:', error.message);
-      return { success: false, error: 'فشل تعديل طلب الصيانة في قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل تعديل طلب الصيانة. يرجى المحاولة مرة أخرى.' };
     }
 
     const updated: MaintenanceRequest = {
@@ -742,14 +742,14 @@ export async function updateCloudMaintenanceRequest(
     return { success: true, data: updated };
   } catch (err: any) {
     console.error('[UPDATE MAINTENANCE EXCEPTION]:', err);
-    return { success: false, error: 'تعذر تعديل طلب الصيانة في الخدمة السحابية.' };
+    return { success: false, error: 'فشل تعديل طلب الصيانة. يرجى المحاولة مرة أخرى.' };
   }
 }
 
 export async function deleteCloudMaintenanceRequest(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const { error } = await supabase
@@ -759,7 +759,7 @@ export async function deleteCloudMaintenanceRequest(
 
     if (error) {
       console.error('[DELETE MAINTENANCE ERROR]:', error.message);
-      return { success: false, error: 'فشل حذف طلب الصيانة من قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل حذف طلب الصيانة. يرجى المحاولة مرة أخرى.' };
     }
     return { success: true };
   } catch (err: any) {
@@ -771,7 +771,7 @@ export async function deleteCloudMaintenanceRequest(
 export async function deleteMultipleCloudMaintenanceRequests(
   ids: string[]
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
   if (!ids.length) return { success: true };
 
   try {
@@ -782,7 +782,7 @@ export async function deleteMultipleCloudMaintenanceRequests(
 
     if (error) {
       console.error('[BULK DELETE MAINTENANCE ERROR]:', error.message);
-      return { success: false, error: 'فشل حذف طلبات الصيانة المحددة من قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل حذف طلب الصيانة. يرجى المحاولة مرة أخرى.' };
     }
     return { success: true };
   } catch (err: any) {
@@ -798,7 +798,7 @@ export async function deleteMultipleCloudMaintenanceRequests(
 export async function createCloudInspection(
   ins: InternalInspection
 ): Promise<{ success: boolean; data?: InternalInspection; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const atomicNum = await getNextAtomicSequence('inspections');
@@ -834,7 +834,7 @@ export async function createCloudInspection(
 
     if (error) {
       console.error('[CREATE INSPECTION ERROR]:', error.message);
-      return { success: false, error: 'فشل حفظ تقرير التفتيش في قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل حفظ تقرير التفتيش. يرجى المحاولة مرة أخرى.' };
     }
 
     const created: InternalInspection = {
@@ -859,14 +859,14 @@ export async function createCloudInspection(
     return { success: true, data: created };
   } catch (err: any) {
     console.error('[CREATE INSPECTION EXCEPTION]:', err);
-    return { success: false, error: 'تعذر إضافة تقرير التفتيش إلى الخدمة السحابية.' };
+    return { success: false, error: 'تعذر إضافة تقرير التفتيش. يرجى المحاولة مرة أخرى.' };
   }
 }
 
 export async function updateCloudInspection(
   ins: InternalInspection
 ): Promise<{ success: boolean; data?: InternalInspection; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const updatePayload: any = {
@@ -893,7 +893,7 @@ export async function updateCloudInspection(
 
     if (error) {
       console.error('[UPDATE INSPECTION ERROR]:', error.message);
-      return { success: false, error: 'فشل تعديل تقرير التفتيش في قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل تعديل تقرير التفتيش. يرجى المحاولة مرة أخرى.' };
     }
 
     const updated: InternalInspection = {
@@ -925,7 +925,7 @@ export async function updateCloudInspection(
 export async function deleteCloudInspection(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const { error } = await supabase
@@ -935,7 +935,7 @@ export async function deleteCloudInspection(
 
     if (error) {
       console.error('[DELETE INSPECTION ERROR]:', error.message);
-      return { success: false, error: 'فشل حذف تقرير التفتيش من قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل حذف تقرير التفتيش. يرجى المحاولة مرة أخرى.' };
     }
     return { success: true };
   } catch (err: any) {
@@ -947,7 +947,7 @@ export async function deleteCloudInspection(
 export async function deleteMultipleCloudInspections(
   ids: string[]
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
   if (!ids.length) return { success: true };
 
   try {
@@ -958,7 +958,7 @@ export async function deleteMultipleCloudInspections(
 
     if (error) {
       console.error('[BULK DELETE INSPECTION ERROR]:', error.message);
-      return { success: false, error: 'فشل حذف سجلات التفتيش المحددة من قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل حذف سجلات التفتيش المحددة. يرجى المحاولة مرة أخرى.' };
     }
     return { success: true };
   } catch (err: any) {
@@ -974,7 +974,7 @@ export async function deleteMultipleCloudInspections(
 export async function createCloudIncident(
   inc: IncidentRecord
 ): Promise<{ success: boolean; data?: IncidentRecord; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const atomicNum = await getNextAtomicSequence('incidents');
@@ -1017,7 +1017,7 @@ export async function createCloudIncident(
 
     if (error) {
       console.error('[CREATE INCIDENT ERROR]:', error.message);
-      return { success: false, error: 'فشل حفظ بلاغ الحادث في قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل حفظ بلاغ الحادث. يرجى المحاولة مرة أخرى.' };
     }
 
     const created: IncidentRecord = {
@@ -1049,14 +1049,14 @@ export async function createCloudIncident(
     return { success: true, data: created };
   } catch (err: any) {
     console.error('[CREATE INCIDENT EXCEPTION]:', err);
-    return { success: false, error: 'تعذر إضافة بلاغ الحادث إلى الخدمة السحابية.' };
+    return { success: false, error: 'تعذر إضافة بلاغ الحادث. يرجى المحاولة مرة أخرى.' };
   }
 }
 
 export async function updateCloudIncident(
   inc: IncidentRecord
 ): Promise<{ success: boolean; data?: IncidentRecord; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const updatePayload: any = {
@@ -1090,7 +1090,7 @@ export async function updateCloudIncident(
 
     if (error) {
       console.error('[UPDATE INCIDENT ERROR]:', error.message);
-      return { success: false, error: 'فشل تعديل بلاغ الحادث في قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل تعديل بلاغ الحادث. يرجى المحاولة مرة أخرى.' };
     }
 
     const updated: IncidentRecord = {
@@ -1129,7 +1129,7 @@ export async function updateCloudIncident(
 export async function deleteCloudIncident(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const { error } = await supabase
@@ -1139,7 +1139,7 @@ export async function deleteCloudIncident(
 
     if (error) {
       console.error('[DELETE INCIDENT ERROR]:', error.message);
-      return { success: false, error: 'فشل حذف بلاغ الحادث من قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل حذف بلاغ الحادث. يرجى المحاولة مرة أخرى.' };
     }
     return { success: true };
   } catch (err: any) {
@@ -1151,7 +1151,7 @@ export async function deleteCloudIncident(
 export async function deleteMultipleCloudIncidents(
   ids: string[]
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
   if (!ids.length) return { success: true };
 
   try {
@@ -1162,7 +1162,7 @@ export async function deleteMultipleCloudIncidents(
 
     if (error) {
       console.error('[BULK DELETE INCIDENT ERROR]:', error.message);
-      return { success: false, error: 'فشل حذف بلاغات الحوادث المحددة من قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل حذف بلاغات الحوادث المحددة. يرجى المحاولة مرة أخرى.' };
     }
     return { success: true };
   } catch (err: any) {
@@ -1178,7 +1178,7 @@ export async function deleteMultipleCloudIncidents(
 export async function saveCloudStation(
   st: Station
 ): Promise<{ success: boolean; data?: Station; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const payload: any = {
@@ -1205,7 +1205,7 @@ export async function saveCloudStation(
 
       if (error) {
         console.error('[UPDATE STATION ERROR]:', error.message);
-        return { success: false, error: 'فشل تعديل بيانات المحطة في قاعدة البيانات السحابية.' };
+        return { success: false, error: 'فشل تعديل بيانات المحطة. يرجى المحاولة مرة أخرى.' };
       }
 
       return {
@@ -1235,7 +1235,7 @@ export async function saveCloudStation(
 
       if (error) {
         console.error('[INSERT STATION ERROR]:', error.message);
-        return { success: false, error: 'فشل إضافة المحطة إلى قاعدة البيانات السحابية.' };
+        return { success: false, error: 'فشل إضافة المحطة. يرجى المحاولة مرة أخرى.' };
       }
 
       return {
@@ -1259,14 +1259,14 @@ export async function saveCloudStation(
     }
   } catch (err: any) {
     console.error('[SAVE STATION EXCEPTION]:', err);
-    return { success: false, error: 'تعذر حفظ بيانات المحطة في الخدمة السحابية.' };
+    return { success: false, error: 'تعذر حفظ بيانات المحطة. يرجى المحاولة مرة أخرى.' };
   }
 }
 
 export async function deleteCloudStation(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     const { error } = await supabase
@@ -1276,7 +1276,7 @@ export async function deleteCloudStation(
 
     if (error) {
       console.error('[DELETE STATION ERROR]:', error.message);
-      return { success: false, error: 'فشل حذف المحطة من قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل حذف المحطة. يرجى المحاولة مرة أخرى.' };
     }
     return { success: true };
   } catch (err: any) {
@@ -1289,7 +1289,7 @@ export async function toggleCloudStationStatus(
   id: string,
   currentStatus: StationStatus
 ): Promise<{ success: boolean; newStatus?: StationStatus; error?: string }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   const newStatus: StationStatus = currentStatus === 'نشطة' ? 'غير نشطة' : 'نشطة';
 
@@ -1301,7 +1301,7 @@ export async function toggleCloudStationStatus(
 
     if (error) {
       console.error('[TOGGLE STATION STATUS ERROR]:', error.message);
-      return { success: false, error: 'فشل تغيير حالة المحطة في قاعدة البيانات السحابية.' };
+      return { success: false, error: 'فشل تغيير حالة المحطة. يرجى المحاولة مرة أخرى.' };
     }
     return { success: true, newStatus };
   } catch (err: any) {
@@ -1320,7 +1320,7 @@ export async function importExcelRecordsToCloud(
   incs: IncidentRecord[],
   onProgress?: (progress: { current: number; total: number; message: string }) => void
 ): Promise<{ success: boolean; importedCount: number; error?: string }> {
-  if (!supabase) return { success: false, importedCount: 0, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, importedCount: 0, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   let totalImported = 0;
   const grandTotal = reqs.length + ins.length + incs.length;
@@ -1333,7 +1333,7 @@ export async function importExcelRecordsToCloud(
       onProgress?.({
         current: totalImported,
         total: grandTotal,
-        message: `جاري تخصيص الأرقام التسلسلية السحابية لـ ${reqs.length} طلب صيانة...`
+        message: `جاري تخصيص الأرقام التسلسلية لـ ${reqs.length} طلب صيانة...`
       });
 
       // Group requests by section to fetch atomic batch sequences per section
@@ -1384,13 +1384,13 @@ export async function importExcelRecordsToCloud(
         const { error } = await supabase.from('maintenance_requests').insert(chunk);
         if (error) {
           console.error('[IMPORT MAINT CHUNK ERROR]:', error.message);
-          throw new Error('فشل استيراد دفعة طلبات الصيانة إلى قاعدة البيانات السحابية.');
+          throw new Error('فشل استيراد دفعة طلبات الصيانة. يرجى المحاولة مرة أخرى.');
         }
         totalImported += chunk.length;
         onProgress?.({
           current: totalImported,
           total: grandTotal,
-          message: `جاري استيراد ${totalImported} من ${grandTotal} سجل إلى الخدمة السحابية...`
+          message: `جاري استيراد ${totalImported} من ${grandTotal} سجل...`
         });
       }
     }
@@ -1433,13 +1433,13 @@ export async function importExcelRecordsToCloud(
         const { error } = await supabase.from('internal_inspections').insert(chunk);
         if (error) {
           console.error('[IMPORT INSP CHUNK ERROR]:', error.message);
-          throw new Error('فشل استيراد دفعة التفتيش الدوري إلى قاعدة البيانات السحابية.');
+          throw new Error('فشل استيراد دفعة التفتيش الدوري. يرجى المحاولة مرة أخرى.');
         }
         totalImported += chunk.length;
         onProgress?.({
           current: totalImported,
           total: grandTotal,
-          message: `جاري استيراد ${totalImported} من ${grandTotal} سجل إلى الخدمة السحابية...`
+          message: `جاري استيراد ${totalImported} من ${grandTotal} سجل...`
         });
       }
     }
@@ -1489,13 +1489,13 @@ export async function importExcelRecordsToCloud(
         const { error } = await supabase.from('incident_records').insert(chunk);
         if (error) {
           console.error('[IMPORT INC CHUNK ERROR]:', error.message);
-          throw new Error('فشل استيراد دفعة بلاغات الحوادث إلى قاعدة البيانات السحابية.');
+          throw new Error('فشل استيراد دفعة بلاغات الحوادث. يرجى المحاولة مرة أخرى.');
         }
         totalImported += chunk.length;
         onProgress?.({
           current: totalImported,
           total: grandTotal,
-          message: `جاري استيراد ${totalImported} من ${grandTotal} سجل إلى الخدمة السحابية...`
+          message: `جاري استيراد ${totalImported} من ${grandTotal} سجل...`
         });
       }
     }
@@ -1510,7 +1510,7 @@ export async function importExcelRecordsToCloud(
     return {
       success: false,
       importedCount: totalImported,
-      error: hasSafeArabic ? err.message : 'حدث خطأ أثناء استيراد البيانات إلى الخدمة السحابية. يرجى المحاولة مرة أخرى.'
+      error: hasSafeArabic ? err.message : 'حدث خطأ أثناء استيراد البيانات. يرجى المحاولة مرة أخرى.'
     };
   }
 }
@@ -1528,7 +1528,7 @@ export async function clearAllCloudRecords(): Promise<{
   success: boolean;
   error?: string;
 }> {
-  if (!supabase) return { success: false, error: 'الخدمة السحابية غير متوفرة.' };
+  if (!supabase) return { success: false, error: 'النظام غير متاح حاليًا. يرجى المحاولة مرة أخرى.' };
 
   try {
     // 1. Delete records in the existing foreign-key dependency order
@@ -1541,15 +1541,15 @@ export async function clearAllCloudRecords(): Promise<{
 
     if (delMaint.error) {
       console.error('[CLEAR MAINT ERROR]:', delMaint.error.message);
-      throw new Error('فشل مسح طلبات الصيانة من قاعدة البيانات السحابية.');
+      throw new Error('فشل مسح طلبات الصيانة. يرجى المحاولة مرة أخرى.');
     }
     if (delInsp.error) {
       console.error('[CLEAR INSP ERROR]:', delInsp.error.message);
-      throw new Error('فشل مسح تقارير التفتيش من قاعدة البيانات السحابية.');
+      throw new Error('فشل مسح تقارير التفتيش. يرجى المحاولة مرة أخرى.');
     }
     if (delInc.error) {
       console.error('[CLEAR INC ERROR]:', delInc.error.message);
-      throw new Error('فشل مسح بلاغات الحوادث من قاعدة البيانات السحابية.');
+      throw new Error('فشل مسح بلاغات الحوادث. يرجى المحاولة مرة أخرى.');
     }
 
     // Keep the central stations directory intact.
@@ -1584,7 +1584,7 @@ export async function clearAllCloudRecords(): Promise<{
     const hasSafeArabic = typeof err?.message === 'string' && /[\u0600-\u06FF]/.test(err.message) && !/[a-zA-Z]/.test(err.message);
     return {
       success: false,
-      error: hasSafeArabic ? err.message : 'تعذر استكمال مسح السجلات من قاعدة البيانات السحابية.'
+      error: hasSafeArabic ? err.message : 'تعذر استكمال مسح السجلات. يرجى المحاولة مرة أخرى.'
     };
   }
 }
