@@ -163,7 +163,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     saveAppData(appData);
   }, [appData, isDatabaseInitialized]);
 
-  // Execute Automatic Daily Cloud Backup once per day after database initialization
+  // Check for the scheduled monthly automatic cloud backup after database initialization
   useEffect(() => {
     if (!isDatabaseInitialized) return;
     async function runDailyBackup() {
@@ -264,18 +264,6 @@ const QuikAppInner = React.memo(function QuikAppInner() {
   };
 
   const handleDeleteMultipleRequests = async (ids: string[]): Promise<{ success: boolean; error?: string }> => {
-    if (ids.length >= 3) {
-      const safetyRes = await executeCloudSafetyBackup(`حذف متعدد لـ ${ids.length} طلب صيانة`);
-      if (!safetyRes.success) {
-        const errMsg = safetyRes.error || 'تم إلغاء عملية الحذف لتعذر إنشاء نسخة الأمان السحابية المطلوبة لحماية البيانات.';
-        setImportNotification({
-          type: 'error',
-          message: errMsg
-        });
-        setTimeout(() => setImportNotification(null), 6000);
-        return { success: false, error: errMsg };
-      }
-    }
     const res = await deleteMultipleCloudMaintenanceRequests(ids);
     if (!res.success) {
       setImportNotification({
@@ -368,18 +356,6 @@ const QuikAppInner = React.memo(function QuikAppInner() {
   };
 
   const handleDeleteMultipleInspections = async (ids: string[]): Promise<{ success: boolean; error?: string }> => {
-    if (ids.length >= 3) {
-      const safetyRes = await executeCloudSafetyBackup(`حذف متعدد لـ ${ids.length} تقرير تفتيش`);
-      if (!safetyRes.success) {
-        const errMsg = safetyRes.error || 'تم إلغاء عملية الحذف لتعذر إنشاء نسخة الأمان السحابية المطلوبة لحماية البيانات.';
-        setImportNotification({
-          type: 'error',
-          message: errMsg
-        });
-        setTimeout(() => setImportNotification(null), 6000);
-        return { success: false, error: errMsg };
-      }
-    }
     const res = await deleteMultipleCloudInspections(ids);
     if (!res.success) {
       setImportNotification({
@@ -472,18 +448,6 @@ const QuikAppInner = React.memo(function QuikAppInner() {
   };
 
   const handleDeleteMultipleIncidents = async (ids: string[]): Promise<{ success: boolean; error?: string }> => {
-    if (ids.length >= 3) {
-      const safetyRes = await executeCloudSafetyBackup(`حذف متعدد لـ ${ids.length} بلاغ حادث`);
-      if (!safetyRes.success) {
-        const errMsg = safetyRes.error || 'تم إلغاء عملية الحذف لتعذر إنشاء نسخة الأمان السحابية المطلوبة لحماية البيانات.';
-        setImportNotification({
-          type: 'error',
-          message: errMsg
-        });
-        setTimeout(() => setImportNotification(null), 6000);
-        return { success: false, error: errMsg };
-      }
-    }
     const res = await deleteMultipleCloudIncidents(ids);
     if (!res.success) {
       setImportNotification({
@@ -601,7 +565,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
 
     setImportNotification({
       type: 'success',
-      message: 'تم مسح السجلات من قاعدة البيانات السحابية بنجاح بعد تأمين نسخة احتياطية سحابية.'
+      message: 'تم مسح السجلات من قاعدة البيانات السحابية بنجاح.'
     });
     setTimeout(() => setImportNotification(null), 5000);
     return { success: true };
