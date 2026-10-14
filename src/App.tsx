@@ -186,7 +186,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
         setIsDatabaseInitialized(true);
         setIsDatabaseLoadError(null);
       } else {
-        setIsDatabaseLoadError(loadRes.error || 'تعذر تحميل قاعدة البيانات من خادم قاعدة البيانات السحابية.');
+        setIsDatabaseLoadError(loadRes.error || 'تعذر تحميل البيانات. يرجى المحاولة مرة أخرى.');
       }
     } catch (err) {
       setIsDatabaseLoadError(err instanceof Error ? err.message : String(err));
@@ -205,7 +205,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (isEditing) {
       const res = await updateCloudMaintenanceRequest(req);
       if (!res.success || !res.data) {
-        const errMsg = res.error || 'تعذر تعديل طلب الصيانة في السحابة.';
+        const errMsg = res.error || 'تعذر تعديل طلب الصيانة.';
         setImportNotification({ type: 'error', message: errMsg });
         setTimeout(() => setImportNotification(null), 5000);
         return { success: false, error: errMsg };
@@ -216,14 +216,14 @@ const QuikAppInner = React.memo(function QuikAppInner() {
       }));
       setImportNotification({
         type: 'success',
-        message: `تم تعديل طلب الصيانة (#${res.data.requestNumber}) في السحابة بنجاح.`
+        message: `تم تعديل طلب الصيانة (#${res.data.requestNumber}) بنجاح.`
       });
       setTimeout(() => setImportNotification(null), 4000);
       return { success: true };
     } else {
       const res = await createCloudMaintenanceRequest(req);
       if (!res.success || !res.data) {
-        const errMsg = res.error || 'تعذر إضافة طلب الصيانة إلى السحابة.';
+        const errMsg = res.error || 'تعذر إضافة طلب الصيانة.';
         setImportNotification({ type: 'error', message: errMsg });
         setTimeout(() => setImportNotification(null), 5000);
         return { success: false, error: errMsg };
@@ -234,7 +234,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
       }));
       setImportNotification({
         type: 'success',
-        message: `تم إنشاء طلب الصيانة الجديد (#${res.data.requestNumber}) برقم تسلسلي سحابي بنجاح.`
+        message: `تم إنشاء طلب الصيانة الجديد (#${res.data.requestNumber}) برقم تسلسلي بنجاح.`
       });
       setTimeout(() => setImportNotification(null), 4000);
       return { success: true };
@@ -246,7 +246,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (!res.success) {
       setImportNotification({
         type: 'error',
-        message: res.error || 'فشل حذف طلب الصيانة من السحابة.'
+        message: res.error || 'فشل حذف طلب الصيانة.'
       });
       setTimeout(() => setImportNotification(null), 5000);
       return { success: false, error: res.error };
@@ -257,7 +257,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     }));
     setImportNotification({
       type: 'success',
-      message: 'تم حذف طلب الصيانة من قاعدة البيانات السحابية بنجاح.'
+      message: 'تم حذف طلب الصيانة بنجاح.'
     });
     setTimeout(() => setImportNotification(null), 4000);
     return { success: true };
@@ -268,7 +268,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (!res.success) {
       setImportNotification({
         type: 'error',
-        message: res.error || 'فشل حذف الطلبات المحددة من السحابة.'
+        message: res.error || 'فشل حذف الطلبات المحددة.'
       });
       setTimeout(() => setImportNotification(null), 5000);
       return { success: false, error: res.error };
@@ -279,7 +279,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     }));
     setImportNotification({
       type: 'success',
-      message: `تم حذف (${ids.length}) طلب صيانة من السحابة بنجاح.`
+      message: `تم حذف (${ids.length}) طلب صيانة بنجاح.`
     });
     setTimeout(() => setImportNotification(null), 4000);
     return { success: true };
@@ -297,7 +297,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (isEditing) {
       const res = await updateCloudInspection(ins);
       if (!res.success || !res.data) {
-        const errMsg = res.error || 'تعذر تعديل تقرير التفتيش في السحابة.';
+        const errMsg = res.error || 'تعذر تعديل تقرير التفتيش.';
         setImportNotification({ type: 'error', message: errMsg });
         setTimeout(() => setImportNotification(null), 5000);
         return { success: false, error: errMsg };
@@ -308,14 +308,14 @@ const QuikAppInner = React.memo(function QuikAppInner() {
       }));
       setImportNotification({
         type: 'success',
-        message: `تم تعديل تقرير التفتيش (#${res.data.inspectionNumber}) في السحابة بنجاح.`
+        message: `تم تعديل تقرير التفتيش (#${res.data.inspectionNumber}) بنجاح.`
       });
       setTimeout(() => setImportNotification(null), 4000);
       return { success: true };
     } else {
       const res = await createCloudInspection(ins);
       if (!res.success || !res.data) {
-        const errMsg = res.error || 'تعذر إضافة تقرير التفتيش إلى السحابة.';
+        const errMsg = res.error || 'تعذر إضافة تقرير التفتيش.';
         setImportNotification({ type: 'error', message: errMsg });
         setTimeout(() => setImportNotification(null), 5000);
         return { success: false, error: errMsg };
@@ -326,7 +326,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
       }));
       setImportNotification({
         type: 'success',
-        message: `تم إنشاء تقرير التفتيش الجديد (#${res.data.inspectionNumber}) في السحابة بنجاح.`
+        message: `تم إنشاء تقرير التفتيش الجديد (#${res.data.inspectionNumber}) بنجاح.`
       });
       setTimeout(() => setImportNotification(null), 4000);
       return { success: true };
@@ -338,7 +338,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (!res.success) {
       setImportNotification({
         type: 'error',
-        message: res.error || 'فشل حذف تقرير التفتيش من السحابة.'
+        message: res.error || 'فشل حذف تقرير التفتيش.'
       });
       setTimeout(() => setImportNotification(null), 5000);
       return { success: false, error: res.error };
@@ -349,7 +349,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     }));
     setImportNotification({
       type: 'success',
-      message: 'تم حذف تقرير التفتيش من قاعدة البيانات السحابية بنجاح.'
+      message: 'تم حذف تقرير التفتيش بنجاح.'
     });
     setTimeout(() => setImportNotification(null), 4000);
     return { success: true };
@@ -360,7 +360,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (!res.success) {
       setImportNotification({
         type: 'error',
-        message: res.error || 'فشل حذف سجلات التفتيش المحددة من السحابة.'
+        message: res.error || 'فشل حذف سجلات التفتيش المحددة.'
       });
       setTimeout(() => setImportNotification(null), 5000);
       return { success: false, error: res.error };
@@ -371,7 +371,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     }));
     setImportNotification({
       type: 'success',
-      message: `تم حذف (${ids.length}) تقرير تفتيش من السحابة بنجاح.`
+      message: `تم حذف (${ids.length}) تقرير تفتيش بنجاح.`
     });
     setTimeout(() => setImportNotification(null), 4000);
     return { success: true };
@@ -389,7 +389,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (isEditing) {
       const res = await updateCloudIncident(inc);
       if (!res.success || !res.data) {
-        const errMsg = res.error || 'تعذر تعديل بلاغ الحادث في السحابة.';
+        const errMsg = res.error || 'تعذر تعديل بلاغ الحادث.';
         setImportNotification({ type: 'error', message: errMsg });
         setTimeout(() => setImportNotification(null), 5000);
         return { success: false, error: errMsg };
@@ -400,14 +400,14 @@ const QuikAppInner = React.memo(function QuikAppInner() {
       }));
       setImportNotification({
         type: 'success',
-        message: `تم تعديل بلاغ الحادث (#${res.data.incidentNumber}) في السحابة بنجاح.`
+        message: `تم تعديل بلاغ الحادث (#${res.data.incidentNumber}) بنجاح.`
       });
       setTimeout(() => setImportNotification(null), 4000);
       return { success: true };
     } else {
       const res = await createCloudIncident(inc);
       if (!res.success || !res.data) {
-        const errMsg = res.error || 'تعذر إضافة بلاغ الحادث إلى السحابة.';
+        const errMsg = res.error || 'تعذر إضافة بلاغ الحادث.';
         setImportNotification({ type: 'error', message: errMsg });
         setTimeout(() => setImportNotification(null), 5000);
         return { success: false, error: errMsg };
@@ -418,7 +418,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
       }));
       setImportNotification({
         type: 'success',
-        message: `تم تسجيل بلاغ الحادث الجديد (#${res.data.incidentNumber}) في السحابة بنجاح.`
+        message: `تم تسجيل بلاغ الحادث الجديد (#${res.data.incidentNumber}) بنجاح.`
       });
       setTimeout(() => setImportNotification(null), 4000);
       return { success: true };
@@ -430,7 +430,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (!res.success) {
       setImportNotification({
         type: 'error',
-        message: res.error || 'فشل حذف بلاغ الحادث من السحابة.'
+        message: res.error || 'فشل حذف بلاغ الحادث.'
       });
       setTimeout(() => setImportNotification(null), 5000);
       return { success: false, error: res.error };
@@ -441,7 +441,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     }));
     setImportNotification({
       type: 'success',
-      message: 'تم حذف بلاغ الحادث من قاعدة البيانات السحابية بنجاح.'
+      message: 'تم حذف بلاغ الحادث بنجاح.'
     });
     setTimeout(() => setImportNotification(null), 4000);
     return { success: true };
@@ -452,7 +452,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (!res.success) {
       setImportNotification({
         type: 'error',
-        message: res.error || 'فشل حذف بلاغات الحوادث المحددة من السحابة.'
+        message: res.error || 'فشل حذف بلاغات الحوادث المحددة.'
       });
       setTimeout(() => setImportNotification(null), 5000);
       return { success: false, error: res.error };
@@ -463,7 +463,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     }));
     setImportNotification({
       type: 'success',
-      message: `تم حذف (${ids.length}) بلاغ حادث من السحابة بنجاح.`
+      message: `تم حذف (${ids.length}) بلاغ حادث بنجاح.`
     });
     setTimeout(() => setImportNotification(null), 4000);
     return { success: true };
@@ -473,7 +473,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
   const handleSaveStation = async (st: Station): Promise<{ success: boolean; error?: string }> => {
     const res = await saveCloudStation(st);
     if (!res.success || !res.data) {
-      const errMsg = res.error || 'تعذر حفظ بيانات المحطة في السحابة.';
+      const errMsg = res.error || 'تعذر حفظ بيانات المحطة.';
       setImportNotification({ type: 'error', message: errMsg });
       setTimeout(() => setImportNotification(null), 5000);
       return { success: false, error: errMsg };
@@ -490,7 +490,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     });
     setImportNotification({
       type: 'success',
-      message: `تم حفظ بيانات المحطة (${res.data.name}) في قاعدة البيانات السحابية بنجاح.`
+      message: `تم حفظ بيانات المحطة (${res.data.name}) بنجاح.`
     });
     setTimeout(() => setImportNotification(null), 4000);
     return { success: true };
@@ -501,7 +501,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (!res.success) {
       setImportNotification({
         type: 'error',
-        message: res.error || 'فشل حذف المحطة من السحابة.'
+        message: res.error || 'فشل حذف المحطة.'
       });
       setTimeout(() => setImportNotification(null), 5000);
       return { success: false, error: res.error };
@@ -512,7 +512,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     }));
     setImportNotification({
       type: 'success',
-      message: 'تم حذف المحطة بنجاح من قاعدة البيانات السحابية.'
+      message: 'تم حذف المحطة بنجاح.'
     });
     setTimeout(() => setImportNotification(null), 4000);
     return { success: true };
@@ -526,7 +526,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (!res.success || !res.newStatus) {
       setImportNotification({
         type: 'error',
-        message: res.error || 'فشل تحديث حالة المحطة في السحابة.'
+        message: res.error || 'فشل تحديث حالة المحطة.'
       });
       setTimeout(() => setImportNotification(null), 5000);
       return { success: false, error: res.error };
@@ -550,7 +550,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     if (!res.success) {
       setImportNotification({
         type: 'error',
-        message: res.error || 'فشلت عملية مسح السجلات من قاعدة البيانات السحابية.'
+        message: res.error || 'فشلت عملية مسح السجلات.'
       });
       setTimeout(() => setImportNotification(null), 6000);
       return { success: false, error: res.error };
@@ -565,7 +565,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
 
     setImportNotification({
       type: 'success',
-      message: 'تم مسح السجلات من قاعدة البيانات السحابية بنجاح.'
+      message: 'تم مسح السجلات بنجاح.'
     });
     setTimeout(() => setImportNotification(null), 5000);
     return { success: true };
@@ -630,11 +630,11 @@ const QuikAppInner = React.memo(function QuikAppInner() {
         onProgress?.({
           current: 0,
           total: totalToImport,
-          message: `جاري إنشاء نسخة الأمان السحابية لـ ${totalToImport} سجل...`
+          message: `جاري تجهيز نسخة أمان لـ ${totalToImport} سجل...`
         });
         const safetyRes = await executeCloudSafetyBackup(`استيراد Excel لـ ${totalToImport} سجل`);
         if (!safetyRes.success) {
-          const errMsg = `تم إلغاء عملية الاستيراد لتعذر إنشاء نسخة الأمان السحابية: ${safetyRes.error || ''}`;
+          const errMsg = `تم إلغاء عملية الاستيراد لتعذر إنشاء نسخة الأمان: ${safetyRes.error || ''}`;
           setImportNotification({
             type: 'error',
             message: errMsg
@@ -647,7 +647,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
       const importRes = await importExcelRecordsToCloud(reqsToAdd, insToAdd, incsToAdd, onProgress);
 
       if (!importRes.success) {
-        const errMsg = `فشل استيراد السجلات إلى قاعدة البيانات السحابية: ${importRes.error || 'خطأ غير معروف'}`;
+        const errMsg = `فشل استيراد السجلات: ${importRes.error || 'خطأ غير معروف'}`;
         setImportNotification({
           type: 'error',
           message: errMsg
@@ -659,7 +659,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
       onProgress?.({
         current: totalToImport,
         total: totalToImport,
-        message: 'جاري تحديث وتنسيق البيانات السحابية...'
+        message: 'جاري تحديث البيانات...'
       });
 
       // Reconcile and refresh authoritative cloud data
@@ -672,7 +672,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
       setExcelPreviewData(null);
       setImportNotification({
         type: 'success',
-        message: `تمت عملية الاستيراد بنجاح! تم حفظ ${importRes.importedCount} سجل في قاعدة البيانات السحابية.`
+        message: `تم الاستيراد بنجاح! تم حفظ ${importRes.importedCount} سجل.`
       });
       setTimeout(() => setImportNotification(null), 5000);
       return { success: true, importedCount: importRes.importedCount };
@@ -751,7 +751,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
             <Loader2 className="w-8 h-8 animate-spin stroke-[2.2]" />
           </div>
           <div>
-            <h2 className="text-lg font-black text-slate-900 mb-1">جاري تحميل البيانات السحابية</h2>
+            <h2 className="text-lg font-black text-slate-900 mb-1">جاري تحميل البيانات</h2>
             <p className="text-xs text-slate-500 font-medium leading-relaxed">
               يتم الاتصال بقاعدة البيانات والتحقق من التحديثات المعتمدة...
             </p>
@@ -770,11 +770,11 @@ const QuikAppInner = React.memo(function QuikAppInner() {
             <AlertTriangle className="w-8 h-8 stroke-[2.2]" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-slate-900 mb-2">تعذر قراءة قاعدة البيانات السحابية</h2>
+            <h2 className="text-xl font-black text-slate-900 mb-2">تعذر تحميل البيانات</h2>
             <p className="text-sm text-slate-600 leading-relaxed font-medium">{isDatabaseLoadError}</p>
           </div>
           <div className="bg-slate-50 p-4 rounded-2xl text-xs text-slate-600 font-medium text-center border border-slate-200">
-            خدمة قاعدة البيانات السحابية - يرجى التحقق من اتصال الإنترنت
+            يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى
           </div>
           <div className="flex gap-3 justify-center">
             <button
@@ -948,7 +948,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
             نظام إدارة الصيانة والتفتيش الدوري والحوادث - محطات كويك للوقود (Quick Fuel Stations) © {new Date().getFullYear()}
           </p>
           <div className="flex items-center gap-2 text-slate-500 font-semibold">
-            <span>نظام صيانة سحابي متكامل لإدارة وتشغيل محطات الوقود</span>
+            <span>نظام متكامل لإدارة وتشغيل محطات الوقود</span>
           </div>
         </div>
       </footer>
