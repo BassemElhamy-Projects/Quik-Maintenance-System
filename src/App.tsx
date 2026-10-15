@@ -113,16 +113,29 @@ const QuikAppInner = React.memo(function QuikAppInner() {
   const [isDatabaseInitialized, setIsDatabaseInitialized] = useState<boolean>(false);
   const [isDatabaseLoadError, setIsDatabaseLoadError] = useState<string | null>(null);
 
-  // Active section view with session persistence
-  const [activeSection, setActiveSection] = useState<SectionType | 'home'>(getValidInitialSection);
+  // Non-admin users must never resume directly into station management.
+  const [activeSection, setActiveSection] = useState<SectionType | 'home'>(() => {
+    const initialSection = getValidInitialSection();
+    return role === 'admin' || initialSection !== 'stations' ? initialSection : 'home';
+  });
 
   useEffect(() => {
+    if (activeSection === 'stations' && role !== 'admin') {
+      setActiveSection('home');
+      try {
+        sessionStorage.setItem('quik_active_section', 'home');
+      } catch (e) {
+        // Ignore storage restrictions
+      }
+      return;
+    }
+
     try {
       sessionStorage.setItem('quik_active_section', activeSection);
     } catch (e) {
       // Ignore storage restrictions
     }
-  }, [activeSection]);
+  }, [activeSection, role]);
 
   // Smart Maintenance Insight filter
   const [activeInsightFilter, setActiveInsightFilter] = useState<MaintenanceInsight | null>(null);
@@ -494,6 +507,10 @@ const QuikAppInner = React.memo(function QuikAppInner() {
 
   // CRUD Handlers - Stations
   const handleSaveStation = async (st: Station): Promise<{ success: boolean; error?: string }> => {
+    if (role !== 'admin') {
+      return { success: false, error: 'ليس لديك صلاحية إدارة المحطات.' };
+    }
+
     const res = await saveCloudStation(st);
     if (!res.success || !res.data) {
       const errMsg = res.error || 'تعذر حفظ بيانات المحطة.';
@@ -520,6 +537,10 @@ const QuikAppInner = React.memo(function QuikAppInner() {
   };
 
   const handleDeleteStation = async (id: string): Promise<{ success: boolean; error?: string }> => {
+    if (role !== 'admin') {
+      return { success: false, error: 'ليس لديك صلاحية إدارة المحطات.' };
+    }
+
     const res = await deleteCloudStation(id);
     if (!res.success) {
       setImportNotification({
@@ -542,6 +563,10 @@ const QuikAppInner = React.memo(function QuikAppInner() {
   };
 
   const handleToggleStationStatus = async (id: string): Promise<{ success: boolean; error?: string }> => {
+    if (role !== 'admin') {
+      return { success: false, error: 'ليس لديك صلاحية إدارة المحطات.' };
+    }
+
     const target = appData.stations.find(s => s.id === id);
     if (!target) return { success: false, error: 'المحطة غير موجودة.' };
 
@@ -856,7 +881,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
               {activeSection === 'facilities' && 'قسم المرافق والساحات'}
               {activeSection === 'inspections' && 'التفتيش الدوري'}
               {activeSection === 'incidents' && 'سجل الحوادث'}
-              {activeSection === 'stations' && 'إدارة المحطات المركزية'}
+              {activeSection === 'stations' && role === 'admin' && 'إدارة المحطات المركزية'}
             </span>
           </div>
         )}
@@ -899,16 +924,22 @@ const QuikAppInner = React.memo(function QuikAppInner() {
         <div key={activeSection} className="animate-page-enter">
           {/* Dashboard View */}
           {activeSection === 'home' && (
-            <Dashboard
-              appData={sortedAppData}
-              onSelectSection={(sec) => {
-                setActiveSection(sec);
-                setActiveInsightFilter(null);
-              }}
-              onOpenRequest={handleOpenRequestFromDashboard}
-              onNewRequestClick={handleQuickNewRequestClick}
-              onSelectInsight={handleOpenInsightRecords}
-            />
+            <div className={role === 'admin' ? undefined : 'quik-non-admin-dashboard'}>
+              {role !== 'admin' && (
+                <style>{`.quik-non-admin-dashboard .dash-stagger-card-6 { display: none !important; }`}</style>
+              )}
+              <Dashboard
+                appData={sortedAppData}
+                onSelectSection={(sec) => {
+                  if (sec === 'stations' && role !== 'admin') return;
+                  setActiveSection(sec);
+                  setActiveInsightFilter(null);
+                }}
+                onOpenRequest={handleOpenRequestFromDashboard}
+                onNewRequestClick={handleQuickNewRequestClick}
+                onSelectInsight={handleOpenInsightRecords}
+              />
+            </div>
           )}
 
           {/* Maintenance Request Sections (Pumps, Tanks, Facilities) */}
@@ -959,7 +990,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
           )}
 
           {/* Stations Central Management Section */}
-          {activeSection === 'stations' && (
+          {activeSection === 'stations' && role === 'admin' && (
             <StationsSection
               stations={sortedStations}
               appData={sortedAppData}
