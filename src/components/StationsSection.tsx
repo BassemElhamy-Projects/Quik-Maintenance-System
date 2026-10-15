@@ -146,7 +146,6 @@ export const StationsSection: React.FC<StationsSectionProps> = ({
   // Summary Metrics
   const activeCount = stations.filter(s => (s.status || 'نشطة') === 'نشطة').length;
   const inactiveCount = stations.filter(s => (s.status || 'نشطة') === 'غير نشطة').length;
-  const officialCount = stations.filter(s => s.isDefault).length;
 
   const handleOpenNewModal = () => {
     setEditingStation({
@@ -273,7 +272,7 @@ export const StationsSection: React.FC<StationsSectionProps> = ({
       </div>
 
       {/* STATS SUMMARY BAR */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs text-right">
           <p className="text-xs font-bold text-slate-500">إجمالي المحطات المسجلة</p>
           <p className="text-2xl font-black text-slate-900 mt-1 tabular-nums font-mono">{stations.length}</p>
@@ -285,10 +284,6 @@ export const StationsSection: React.FC<StationsSectionProps> = ({
         <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs text-right">
           <p className="text-xs font-bold text-slate-500">المحطات غير النشطة</p>
           <p className="text-2xl font-black text-slate-700 mt-1 tabular-nums font-mono">{inactiveCount}</p>
-        </div>
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs text-right">
-          <p className="text-xs font-bold text-orange-600">المحطات التأسيسية الرسمية</p>
-          <p className="text-2xl font-black text-orange-700 mt-1 tabular-nums font-mono">{officialCount}</p>
         </div>
       </div>
 
