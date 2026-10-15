@@ -103,9 +103,24 @@ export const StationsSection: React.FC<StationsSectionProps> = ({
     };
   };
 
-  // Filtered stations list
+  // Filter and sort stations by numeric station code so the list stays in 1, 2, 3... order.
   const filteredStations = useMemo(() => {
-    return stations.filter(st => {
+    const getNumericCode = (code: string | number | null | undefined): number => {
+      const normalizedCode = String(code ?? '')
+        .replace(/[٠-٩]/g, digit => String(digit.charCodeAt(0) - 1632))
+        .replace(/[۰-۹]/g, digit => String(digit.charCodeAt(0) - 1776));
+      const digits = normalizedCode.match(/\d+/g)?.join('');
+      return digits ? Number.parseInt(digits, 10) : Number.POSITIVE_INFINITY;
+    };
+
+    const sortedStations = [...stations].sort((a, b) => {
+      const codeA = getNumericCode(a.code);
+      const codeB = getNumericCode(b.code);
+      if (codeA !== codeB) return codeA - codeB;
+      return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'ar');
+    });
+
+    return sortedStations.filter(st => {
       if (statusFilter !== 'all') {
         const currentStatus = st.status || 'نشطة';
         if (currentStatus !== statusFilter) return false;
@@ -352,14 +367,14 @@ export const StationsSection: React.FC<StationsSectionProps> = ({
       {/* STATIONS TABLE */}
       <div className="bg-white rounded-2xl shadow-2xs border border-slate-200/90 overflow-hidden">
         <div className="table-container-responsive overflow-x-auto w-full max-w-full">
-          <table className="w-full text-right text-xs table-fixed">
+          <table className="w-full min-w-[1100px] text-right text-xs table-fixed">
             <colgroup>
-              <col className="w-[35%]" />
+              <col className="w-[28%]" />
+              <col className="w-[17%]" />
+              <col className="w-[10%]" />
               <col className="w-[20%]" />
-              <col className="w-[120px]" />
-              <col className="w-[25%]" />
-              <col className="w-[120px]" />
-              <col className="w-[120px]" />
+              <col className="w-[15%]" />
+              <col className="w-[10%]" />
             </colgroup>
             <thead className="bg-slate-50/80 text-slate-700 font-bold border-y border-slate-200">
               <tr>
@@ -388,15 +403,15 @@ export const StationsSection: React.FC<StationsSectionProps> = ({
                   return (
                     <tr key={st.id} className="hover:bg-orange-50/30 transition-colors even:bg-slate-50/40 group">
                       
-                      {/* Station Name & Badges */}
+                      {/* Station Name */}
                       <td className="py-4 px-4 font-bold text-slate-900 text-right">
-                        <div className="flex items-center gap-1.5 flex-wrap justify-start">
-                          <span className="text-sm font-bold text-slate-900 leading-tight break-words" title={st.name}>{st.name}</span>
-                          {st.isDefault && (
-                            <span className="bg-orange-50 text-orange-800 text-[10px] font-extrabold px-2 py-0.5 rounded-md border border-orange-200/80 shrink-0">
-                              رسمية تأسيسية ⭐
-                            </span>
-                          )}
+                        <div className="flex min-w-0 items-center justify-start">
+                          <span
+                            className="min-w-0 text-sm font-bold text-slate-900 leading-tight break-words"
+                            title={st.name}
+                          >
+                            {st.name}
+                          </span>
                         </div>
                         {st.address && (
                           <div className="text-[11px] text-slate-500 font-normal mt-0.5 flex items-center gap-1 break-words justify-start" title={st.address}>
@@ -472,11 +487,8 @@ export const StationsSection: React.FC<StationsSectionProps> = ({
                           </button>
                           <button
                             onClick={() => handleAttemptDelete(st)}
-                            className={`p-1.5 rounded-lg border shadow-sm transition-all cursor-pointer active:scale-95 ${
-                              st.isDefault || linked.totalRecords > 0
-                                ? 'bg-slate-50 text-slate-400 border-slate-200'
-                                : 'bg-white hover:bg-rose-50 text-rose-600 border-slate-200 hover:border-rose-200'
-                            }`}
+                            aria-label={`حذف محطة ${st.name}`}
+                            className="p-1.5 bg-white hover:bg-rose-50 text-rose-600 rounded-lg border border-slate-200 hover:border-rose-200 shadow-sm transition-all cursor-pointer active:scale-95"
                             title={
                               st.isDefault
                                 ? 'محطة رسمية تأسيسية محمية من الحذف'
