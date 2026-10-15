@@ -926,7 +926,19 @@ const QuikAppInner = React.memo(function QuikAppInner() {
           {activeSection === 'home' && (
             <div className={role === 'admin' ? undefined : 'quik-non-admin-dashboard'}>
               {role !== 'admin' && (
-                <style>{`.quik-non-admin-dashboard .dash-stagger-card-6 { display: none !important; }`}</style>
+                <style>{`
+                  /* Hide station management from regular users. */
+                  .quik-non-admin-dashboard .dash-stagger-card-6 {
+                    display: none !important;
+                  }
+
+                  /* When the sixth card is hidden, use five equal columns instead of leaving a blank slot. */
+                  @media (min-width: 1280px) {
+                    .quik-non-admin-dashboard .grid:has(> .dash-stagger-card-6) {
+                      grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+                    }
+                  }
+                `}</style>
               )}
               <Dashboard
                 appData={sortedAppData}
