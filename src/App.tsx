@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AppData, MaintenanceRequest, InternalInspection, IncidentRecord, Station, SectionType } from './types';
 import { getAppData, saveAppData, loadAppDataAsync, clearAllRecords } from './services/storage';
 import {
@@ -75,6 +75,41 @@ const QuikAppInner = React.memo(function QuikAppInner() {
 
   // Main persistent state - Initial state is empty until authoritative cloud load succeeds
   const [appData, setAppData] = useState<AppData>(EMPTY_APP_DATA);
+
+  // Use one consistent numeric station order across all station selectors and dashboard filters.
+  // This only changes display order; the original appData and cloud data remain untouched.
+  const sortedStations = useMemo(() => {
+    const getStationCode = (code: unknown): number => {
+      const normalized = String(code ?? '')
+        .replace(/[٠-٩]/g, digit =>
+          String(digit.charCodeAt(0) - 1632)
+        )
+        .replace(/[۰-۹]/g, digit =>
+          String(digit.charCodeAt(0) - 1776)
+        );
+
+      const parsed = Number.parseInt(
+        normalized.replace(/[^\d]/g, ''),
+        10
+      );
+
+      return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+    };
+
+    return [...appData.stations].sort((a, b) => {
+      const codeDifference = getStationCode(a.code) - getStationCode(b.code);
+      if (codeDifference !== 0) return codeDifference;
+
+      return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'ar');
+    });
+  }, [appData.stations]);
+
+  // Dashboard and station-management views use the same display-only sorted list.
+  const sortedAppData = useMemo(
+    () => ({ ...appData, stations: sortedStations }),
+    [appData, sortedStations]
+  );
+
   const [isDatabaseInitialized, setIsDatabaseInitialized] = useState<boolean>(false);
   const [isDatabaseLoadError, setIsDatabaseLoadError] = useState<string | null>(null);
 
@@ -865,7 +900,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
           {/* Dashboard View */}
           {activeSection === 'home' && (
             <Dashboard
-              appData={appData}
+              appData={sortedAppData}
               onSelectSection={(sec) => {
                 setActiveSection(sec);
                 setActiveInsightFilter(null);
@@ -882,7 +917,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
               key={activeSection}
               section={activeSection}
               requests={appData.maintenanceRequests}
-              stations={appData.stations}
+              stations={sortedStations}
               onSaveRequest={handleSaveMaintenanceRequest}
               onDeleteRequest={handleDeleteMaintenanceRequest}
               onDeleteMultipleRequests={handleDeleteMultipleRequests}
@@ -901,7 +936,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
           {activeSection === 'inspections' && (
             <InspectionSection
               inspections={appData.inspections}
-              stations={appData.stations}
+              stations={sortedStations}
               onSaveInspection={handleSaveInspection}
               onDeleteInspection={handleDeleteInspection}
               onDeleteMultipleInspections={handleDeleteMultipleInspections}
@@ -914,7 +949,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
           {activeSection === 'incidents' && (
             <IncidentsSection
               incidents={appData.incidents}
-              stations={appData.stations}
+              stations={sortedStations}
               onSaveIncident={handleSaveIncident}
               onDeleteIncident={handleDeleteIncident}
               onDeleteMultipleIncidents={handleDeleteMultipleIncidents}
@@ -926,8 +961,8 @@ const QuikAppInner = React.memo(function QuikAppInner() {
           {/* Stations Central Management Section */}
           {activeSection === 'stations' && (
             <StationsSection
-              stations={appData.stations}
-              appData={appData}
+              stations={sortedStations}
+              appData={sortedAppData}
               onSaveStation={handleSaveStation}
               onDeleteStation={handleDeleteStation}
               onToggleStatus={handleToggleStationStatus}
