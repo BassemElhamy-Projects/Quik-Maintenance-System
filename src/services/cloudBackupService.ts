@@ -453,6 +453,15 @@ export async function createCloudBackup(
 ): Promise<{ success: boolean; backup?: CloudBackupItem; error?: string }> {
   if (!supabase) return { success: false, error: 'الخدمة غير متاحة حاليًا.' };
 
+  // Automatic backups are handled exclusively by the Supabase Cron job.
+  // Block app-triggered automatic backups to prevent duplicate monthly attempts.
+  if (backupType === 'automatic') {
+    return {
+      success: false,
+      error: 'النسخ التلقائي تتم جدولته بواسطة Supabase Cron فقط.'
+    };
+  }
+
   try {
     const { data: { session } } = await supabase.auth.getSession();
 
