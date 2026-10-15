@@ -980,24 +980,17 @@ export async function executeCloudSafetyBackup(reason = 'نسخة أمان أو�
 /**
  * Checks and creates automatic cloud backup if needed
  */
-export async function checkAndRunAutomaticCloudBackup(): Promise<{ success: boolean; backup?: CloudBackupItem; error?: string }> {
-  const backupsRes = await listCloudBackups();
-  if (!backupsRes.success) {
-    return { success: false, error: backupsRes.error || DEFAULT_BACKUP_ERROR };
-  }
-
-  const intervalMs = 30 * 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  const latestAutomatic = (backupsRes.backups || [])
-    .filter((backup) => backup.backup_type === 'automatic' && backup.status === 'successful')
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-
-  if (latestAutomatic) {
-    const lastBackupTime = new Date(latestAutomatic.created_at).getTime();
-    if (Number.isFinite(lastBackupTime) && now - lastBackupTime < intervalMs) {
-      return { success: true, backup: latestAutomatic };
-    }
-  }
-
-  return createCloudBackup('automatic', 'نسخة أوتوماتيكية دورية كل 30 يومًا');
+/**
+ * Automatic backups are scheduled exclusively by Supabase Cron.
+ * This guard prevents the application from creating extra automatic backups.
+ */
+export async function checkAndRunAutomaticCloudBackup(): Promise<{
+  success: boolean;
+  backup?: CloudBackupItem;
+  error?: string;
+}> {
+  return {
+    success: false,
+    error: 'النسخ التلقائي تتم جدولته بواسطة Supabase Cron فقط.'
+  };
 }
