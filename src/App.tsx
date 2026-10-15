@@ -12,7 +12,6 @@ import {
   checkDriveStatusAsync
 } from './services/backupService';
 import {
-  checkAndRunAutomaticCloudBackup,
   executeCloudSafetyBackup
 } from './services/cloudBackupService';
 import {
@@ -164,22 +163,6 @@ const QuikAppInner = React.memo(function QuikAppInner() {
     }
     saveAppData(appData);
   }, [appData, isDatabaseInitialized]);
-
-  // Check for the scheduled monthly automatic cloud backup after database initialization
-  useEffect(() => {
-    // Automatic backups are restricted to active administrators.
-    if (!isDatabaseInitialized || role !== 'admin') return;
-
-    async function runDailyBackup() {
-      try {
-        await checkAndRunAutomaticCloudBackup();
-      } catch (err) {
-        console.warn('[CLOUD BACKUP] Automatic backup check notice:', err);
-      }
-    }
-
-    runDailyBackup();
-  }, [isDatabaseInitialized, role]);
 
   // Retry loading database from cloud if failed
   const handleRetryDatabaseLoad = async () => {
