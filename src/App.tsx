@@ -46,7 +46,7 @@ import { BackupModal } from './components/BackupModal';
 import { PrintReportModal } from './components/PrintReportModal';
 import { ExcelImportPreviewModal } from './components/ExcelImportPreviewModal';
 import { MaintenanceInsight } from './utils/smartAnalysis';
-import { ArrowRight, CheckCircle2, AlertCircle, RefreshCw, AlertTriangle, Loader2 } from 'lucide-react';
+import { ArrowRight, CheckCircle2, AlertCircle, RefreshCw, AlertTriangle } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginScreen } from './components/Auth/LoginScreen';
 
@@ -752,10 +752,16 @@ const QuikAppInner = React.memo(function QuikAppInner() {
   // Initial Authoritative Cloud Loading View (Blocks stale local cache from rendering)
   if (!isDatabaseInitialized && !isDatabaseLoadError) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 dir-rtl text-slate-800 font-['Cairo',sans-serif]">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 dir-rtl text-slate-800 font-['Cairo',sans-serif] quik-brand-background">
         <div className="bg-white border border-slate-200/80 rounded-3xl p-8 max-w-sm w-full shadow-xl shadow-slate-200/50 text-center space-y-4 animate-in fade-in duration-300">
-          <div className="w-16 h-16 bg-orange-50 border border-orange-200 text-orange-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
-            <Loader2 className="w-8 h-8 animate-spin stroke-[2.2]" />
+          <div className="quik-loader-mark">
+            <img
+              src="/quik-arrow-mark.png"
+              alt=""
+              aria-hidden="true"
+              className="quik-loader-mark__arrows"
+            />
+            <span className="quik-loader-mark__ring" />
           </div>
           <div>
             <h2 className="text-lg font-black text-slate-900 mb-1">جاري تحميل البيانات</h2>
@@ -771,7 +777,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
   // Database Load Error View (Cloud database unreachable / network offline)
   if (isDatabaseLoadError) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 dir-rtl text-slate-800 font-['Cairo',sans-serif]">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 dir-rtl text-slate-800 font-['Cairo',sans-serif] quik-brand-background">
         <div className="bg-white border border-rose-200/80 rounded-3xl p-8 max-w-lg w-full shadow-xl shadow-slate-200/60 text-center space-y-6">
           <div className="w-16 h-16 bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
             <AlertTriangle className="w-8 h-8 stroke-[2.2]" />
@@ -798,7 +804,7 @@ const QuikAppInner = React.memo(function QuikAppInner() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col dir-rtl text-slate-800 font-['Cairo',sans-serif]">
+    <div className="min-h-screen bg-slate-100 flex flex-col dir-rtl text-slate-800 font-['Cairo',sans-serif] quik-brand-background">
       
       {/* Top Header */}
       <Header
@@ -1003,14 +1009,20 @@ function AppGate() {
   // 1. Initial startup loading: only show full-screen loader while session is unresolved
   if (isLoading && !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 dir-rtl font-['Cairo',sans-serif] selection:bg-orange-500 selection:text-white relative overflow-hidden">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 dir-rtl font-['Cairo',sans-serif] selection:bg-orange-500 selection:text-white relative overflow-hidden quik-brand-background">
         {/* Ambient Subtle Background Accents */}
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-orange-500/5 rounded-full blur-3xl pointer-events-none"></div>
         <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-orange-600/5 rounded-full blur-3xl pointer-events-none"></div>
 
         <div className="bg-white border border-slate-200/90 py-8 px-10 rounded-3xl shadow-xl shadow-slate-200/60 text-center flex flex-col items-center justify-center gap-3.5 relative z-10 max-w-sm w-full">
-          <div className="p-3.5 rounded-2xl bg-orange-50 text-orange-600 border border-orange-100 shadow-2xs">
-            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+          <div className="quik-loader-mark">
+            <img
+              src="/quik-arrow-mark.png"
+              alt=""
+              aria-hidden="true"
+              className="quik-loader-mark__arrows"
+            />
+            <span className="quik-loader-mark__ring" />
           </div>
           <div>
             <p className="text-sm font-black text-slate-900 leading-tight">كويك لمحطات الوقود</p>
