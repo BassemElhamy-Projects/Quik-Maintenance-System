@@ -613,7 +613,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
           </div>
         ) : (
           <>
-          <div className="table-container-responsive overflow-x-auto w-full max-w-full">
+          <div className="hidden md:block table-container-responsive overflow-x-auto w-full max-w-full">
             <table className="w-full text-right text-xs table-fixed">
               <colgroup>
                 <col className="w-10" />
@@ -739,6 +739,132 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile-friendly request cards: prevents table columns from collapsing on narrow screens */}
+          <div className="md:hidden p-3 space-y-3">
+            {paginatedRequests.map(req => {
+              const isSelected = selectedIds.includes(req.id);
+              const statusClasses =
+                req.status === 'جديد'
+                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                  : req.status === 'جاري العمل'
+                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                    : req.status === 'تم'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-slate-50 text-slate-700 border-slate-200';
+              const statusLabel =
+                req.status === 'تم' ? 'تم الإنجاز' : (req.status || 'غير محدد');
+
+              return (
+                <article
+                  key={req.id}
+                  className={`min-w-0 rounded-2xl border p-3.5 shadow-xs ${
+                    isSelected
+                      ? 'border-orange-300 bg-orange-50/50'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggleSelectItem(req.id)}
+                        aria-label={`تحديد طلب ${req.requestNumber}`}
+                        className="mt-1 h-4 w-4 shrink-0 rounded text-orange-600 focus:ring-orange-500 cursor-pointer"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-sm font-black text-slate-900">
+                            طلب #{req.requestNumber}
+                          </span>
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusClasses}`}>
+                            {statusLabel}
+                          </span>
+                        </div>
+                        <p className="mt-1.5 break-words text-sm font-extrabold leading-relaxed text-slate-900">
+                          {req.stationName || 'محطة غير محددة'}
+                        </p>
+                        {req.stationCode && (
+                          <p className="mt-0.5 break-words text-[11px] text-slate-500">
+                            كود المحطة: {req.stationCode}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-3 border-t border-slate-100 pt-3 text-xs">
+                    <div className="min-w-0">
+                      <dt className="mb-1 font-semibold text-slate-500">التاريخ</dt>
+                      <dd dir="ltr" className="break-words text-right font-mono font-semibold text-slate-800">
+                        {req.date || '—'}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="mb-1 font-semibold text-slate-500">رافع الطلب</dt>
+                      <dd className="break-words font-bold leading-relaxed text-slate-800">
+                        {req.requester || '—'}
+                      </dd>
+                    </div>
+                    <div className="min-w-0 col-span-2">
+                      <dt className="mb-1 font-semibold text-slate-500">نوع الصيانة</dt>
+                      <dd className="break-words font-bold leading-relaxed text-slate-800">
+                        {req.maintenanceType || req.requestType || 'صيانة عامة'}
+                      </dd>
+                    </div>
+                    <div className="min-w-0 col-span-2">
+                      <dt className="mb-1 font-semibold text-slate-500">الفني / الإجراء</dt>
+                      <dd className="break-words whitespace-pre-wrap leading-relaxed text-slate-700">
+                        {req.technician
+                          ? `${req.technician}${req.actionTaken ? ` — ${req.actionTaken}` : ''}`
+                          : (req.actionTaken || 'قيد التعيين')}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {req.problemDescription && (
+                    <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                      <p className="mb-1 text-[11px] font-bold text-slate-500">وصف المشكلة</p>
+                      <p className="break-words whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
+                        {req.problemDescription}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditModal(req)}
+                      className="flex min-h-10 items-center justify-center gap-1 rounded-xl border border-orange-200 bg-orange-50 px-2 py-2 text-xs font-bold text-orange-700 transition-colors hover:bg-orange-100"
+                      title="عرض وتعديل الطلب"
+                    >
+                      <Edit3 className="h-4 w-4 shrink-0" />
+                      <span>تعديل</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onPrintRequest(req)}
+                      className="flex min-h-10 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50"
+                      title="طباعة التقرير"
+                    >
+                      <Printer className="h-4 w-4 shrink-0" />
+                      <span>طباعة</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTargetId(req.id)}
+                      className="flex min-h-10 items-center justify-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-2 py-2 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100"
+                      title="حذف الطلب"
+                    >
+                      <Trash2 className="h-4 w-4 shrink-0" />
+                      <span>حذف</span>
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
 
           {/* Pagination controls */}
