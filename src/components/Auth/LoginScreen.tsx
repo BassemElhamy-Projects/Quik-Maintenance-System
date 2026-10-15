@@ -141,7 +141,7 @@ export const LoginScreen: React.FC = () => {
   const displayError = localError || authError;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 py-6 sm:px-6 dir-rtl font-['Cairo',sans-serif] selection:bg-orange-500 selection:text-white relative overflow-hidden">
+    <div className="quik-brand-background min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 py-6 sm:px-6 dir-rtl font-['Cairo',sans-serif] selection:bg-orange-500 selection:text-white relative overflow-hidden">
 
       {/* Background Accents */}
       <div className="absolute -top-40 -right-40 w-96 h-96 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
