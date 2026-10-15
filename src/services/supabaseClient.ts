@@ -1,44 +1,65 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Database } from '../types/supabase';
 
-// Safely obtain public configuration across both Vite browser environment and Node/Electron test environments
+// Safely obtain public configuration across Vite browser and Node/Electron environments.
 function getEnvVar(key: string): string {
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
+  if (
+    typeof import.meta !== 'undefined' &&
+    (import.meta as any).env &&
+    (import.meta as any).env[key]
+  ) {
     return (import.meta as any).env[key];
   }
-  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+
+  if (
+    typeof process !== 'undefined' &&
+    process.env &&
+    process.env[key]
+  ) {
     return process.env[key] as string;
   }
+
   return '';
 }
 
 /**
- * Sanitizes the Supabase URL to ensure it is strictly the root project URL (e.g. https://xyz.supabase.co)
- * and strips any trailing slashes, /rest/v1, /auth/v1, /functions/v1, or malformed paths that cause
- * "Invalid path specified in request URI" errors from Kong gateway.
+ * Ensures that the Supabase URL contains only the project root URL.
  */
 export function sanitizeSupabaseUrl(rawUrl: string): string {
   if (!rawUrl) return '';
+
   let url = rawUrl.trim();
-  // Remove any trailing slashes
+
+  // Remove trailing slashes.
   url = url.replace(/\/+$/, '');
-  // Remove accidental subpaths like /rest/v1, /auth/v1, /functions/v1, /v1
+
+  // Remove accidental API subpaths.
   url = url.replace(/\/(rest|auth|functions)(\/v\d+)?$/i, '');
   url = url.replace(/\/+$/, '');
+
   return url;
 }
 
-const DEFAULT_PROJECT_URL = 'https://oozxebwhhbxblbgptytq.supabase.co';
-const DEFAULT_ANON_KEY = 'sb_publishable_g4346u1jcDG3UaZ6er92EQ_9NbIsQ_X';
+const DEFAULT_PROJECT_URL =
+  'https://oozxebwhhbxblbgptytq.supabase.co';
 
-const RAW_SUPABASE_URL = getEnvVar('VITE_SUPABASE_URL') || DEFAULT_PROJECT_URL;
-const RAW_SUPABASE_ANON_KEY = getEnvVar('VITE_SUPABASE_ANON_KEY') || DEFAULT_ANON_KEY;
+const DEFAULT_ANON_KEY =
+  'sb_publishable_g4346u1jcDG3UaZ6er92EQ_9NbIsQ_X';
 
-export const SUPABASE_URL = sanitizeSupabaseUrl(RAW_SUPABASE_URL);
-export const SUPABASE_ANON_KEY = RAW_SUPABASE_ANON_KEY.trim();
+const RAW_SUPABASE_URL =
+  getEnvVar('VITE_SUPABASE_URL') || DEFAULT_PROJECT_URL;
+
+const RAW_SUPABASE_ANON_KEY =
+  getEnvVar('VITE_SUPABASE_ANON_KEY') || DEFAULT_ANON_KEY;
+
+export const SUPABASE_URL =
+  sanitizeSupabaseUrl(RAW_SUPABASE_URL);
+
+export const SUPABASE_ANON_KEY =
+  RAW_SUPABASE_ANON_KEY.trim();
 
 /**
- * Checks if Supabase client is properly configured with valid URL & Anon Key
+ * Checks whether the Supabase client configuration is valid.
  */
 export function isSupabaseConfigured(): boolean {
   return Boolean(
@@ -49,19 +70,33 @@ export function isSupabaseConfigured(): boolean {
   );
 }
 
-// Singleton Supabase client instance (or null if unconfigured)
-export const supabase: SupabaseClient<Database> | null = isSupabaseConfigured()
-  ? createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: false
-      }
-    })
-  : null;
+/**
+ * Singleton Supabase client.
+ *
+ * The new storage key isolates this version from sessions saved
+ * under the previous storage key.
+ *
+ * Users may need to sign in again after this change is deployed.
+ */
+export const supabase: SupabaseClient<Database> | null =
+  isSupabaseConfigured()
+    ? createClient<Database>(
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY,
+        {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false,
+            storageKey: 'quik_maintenance_auth_token_v2',
+          },
+        }
+      )
+    : null;
 
 /**
- * Health check to verify live cloud database connectivity without modifying state
+ * Health check for cloud database connectivity.
+ * Does not modify database data.
  */
 export async function testSupabaseConnection(): Promise<{
   connected: boolean;
@@ -73,15 +108,19 @@ export async function testSupabaseConnection(): Promise<{
     return {
       connected: false,
       configured: false,
-      message: 'إعدادات الاتصال بقاعدة البيانات غير مهيأة بعد.'
+      message: 'إعدادات الاتصال بقاعدة البيانات غير مهيأة بعد.',
     };
   }
 
   const start = performance.now();
+
   try {
     const { error } = await supabase
       .from('stations')
-      .select('count', { count: 'exact', head: true });
+      .select('count', {
+        count: 'exact',
+        head: true,
+      });
 
     const latencyMs = Math.round(performance.now() - start);
 
@@ -90,7 +129,7 @@ export async function testSupabaseConnection(): Promise<{
         connected: false,
         configured: true,
         latencyMs,
-        message: `تعذر الوصول لقاعدة البيانات: ${error.message}`
+        message: `تعذر الوصول لقاعدة البيانات: ${error.message}`,
       };
     }
 
@@ -98,13 +137,16 @@ export async function testSupabaseConnection(): Promise<{
       connected: true,
       configured: true,
       latencyMs,
-      message: `الاتصال بقاعدة البيانات نشط ومستقر (${latencyMs}ms)`
+      message: `الاتصال بقاعدة البيانات نشط ومستقر (${latencyMs}ms)`,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMessage =
+      err instanceof Error ? err.message : String(err);
+
     return {
       connected: false,
       configured: true,
-      message: `خطأ في الاتصال: ${err?.message || String(err)}`
+      message: `خطأ في الاتصال: ${errorMessage}`,
     };
   }
 }
