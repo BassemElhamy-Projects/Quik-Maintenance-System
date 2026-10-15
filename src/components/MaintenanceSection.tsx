@@ -16,8 +16,10 @@ import {
   Square,
   AlertCircle,
   Download,
+  Sparkles,
 } from 'lucide-react';
 import { MaintenanceRequest, Station, MaintenanceStatus } from '../types';
+import { MaintenanceInsight } from '../utils/smartAnalysis';
 import { ConfirmModal } from './ConfirmModal';
 import { ModalPortal } from './ModalPortal';
 import { getNextMaintenanceRequestNumber, parseValidRequestNumber } from '../utils/requestSequencer';
@@ -64,6 +66,15 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
   const [stationFilter, setStationFilter] = useState<string>('all');
   const [monthFilter, setMonthFilter] = useState<string>('all');
   const [yearFilter, setYearFilter] = useState<string>('all');
+
+  // Pagination: show ten maintenance requests per page.
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Return to the first page whenever the active filters change.
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [section, searchTerm, statusFilter, stationFilter, monthFilter, yearFilter, activeInsightFilter]);
 
   // Bulk Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -186,6 +197,26 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
       return (a.date || '').localeCompare(b.date || '');
     });
   }, [filteredRequests]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedRequests.length / PAGE_SIZE));
+
+  const paginatedRequests = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    return sortedRequests.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [sortedRequests, currentPage]);
+
+  // Keep the current page valid if records are deleted or filters reduce results.
+  React.useEffect(() => {
+    setCurrentPage(page => Math.min(page, totalPages));
+  }, [totalPages]);
+
+  // Show a compact window of page numbers rather than every page for large datasets.
+  const visiblePageNumbers = useMemo(() => {
+    const windowSize = 5;
+    const startPage = Math.max(1, Math.min(currentPage - 2, totalPages - windowSize + 1));
+    const endPage = Math.min(totalPages, startPage + windowSize - 1);
+    return Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
+  }, [currentPage, totalPages]);
 
   // Bulk Selection Handlers
   const isAllSelected = sortedRequests.length > 0 && selectedIds.length === sortedRequests.length;
@@ -581,6 +612,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
             )}
           </div>
         ) : (
+          <>
           <div className="table-container-responsive overflow-x-auto w-full max-w-full">
             <table className="w-full text-right text-xs table-fixed">
               <colgroup>
@@ -615,7 +647,7 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {sortedRequests.map(req => {
+                {paginatedRequests.map(req => {
                   const isSelected = selectedIds.includes(req.id);
                   return (
                     <tr
@@ -708,6 +740,56 @@ export const MaintenanceSection: React.FC<MaintenanceSectionProps> = ({
               </tbody>
             </table>
           </div>
+
+          {/* Pagination controls */}
+          {sortedRequests.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/60 px-4 py-3">
+              <p className="text-xs font-semibold text-slate-500">
+                عرض {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedRequests.length)} من {sortedRequests.length} سجل
+              </p>
+
+              <div className="flex items-center justify-center gap-1.5 flex-wrap" dir="rtl">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(page => Math.max(1, page - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-orange-50 hover:border-orange-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  السابق
+                </button>
+
+                {visiblePageNumbers.map(page => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    aria-current={currentPage === page ? 'page' : undefined}
+                    className={`min-w-8 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                      currentPage === page
+                        ? 'bg-orange-500 text-white border-orange-500 shadow-2xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-orange-50 hover:border-orange-200'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-orange-50 hover:border-orange-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  التالي
+                </button>
+              </div>
+
+              <p className="text-xs font-semibold text-slate-500">
+                صفحة {currentPage} من {totalPages}
+              </p>
+            </div>
+          )}
+          </>
         )}
       </div>
 
